@@ -121,9 +121,21 @@ export default function Dashboard() {
               <div className="text-sm text-text">{displayName}</div>
             </div>
             <div>
-              <div className="mb-1 text-xs text-text-faded">Solana wallet</div>
-              <div className="font-mono text-sm text-text">{shortWallet}</div>
-            </div>
+  <div className="mb-1 text-xs text-text-faded">Solana wallet</div>
+  <div className="mb-2 font-mono text-sm text-text break-all">
+    {walletAddress || "No wallet"}
+  </div>
+  {walletAddress && (
+    <button
+      onClick={() => {
+        navigator.clipboard.writeText(walletAddress);
+      }}
+      className="text-xs text-lime hover:opacity-80"
+    >
+      Copy address
+    </button>
+  )}
+</div>
           </div>
           <button
             onClick={logout}

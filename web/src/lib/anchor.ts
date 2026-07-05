@@ -1,41 +1,28 @@
-import { AnchorProvider, Program, Idl, BN, web3 } from "@coral-xyz/anchor";
-import { Connection, PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
-import idl from "./idl/zinch_escrow.json";
+import {
+  Connection,
+  PublicKey,
+  Transaction,
+  SystemProgram,
+  TransactionInstruction,
+} from "@solana/web3.js";
+import BN from "bn.js";
+import * as borsh from "@coral-xyz/borsh";
+import bs58 from "bs58";
 
-// Solana devnet RPC (or Helius if you set that env var)
 export const SOLANA_RPC =
   process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.devnet.solana.com";
 
-// Your deployed program ID
 export const PROGRAM_ID = new PublicKey(
   process.env.NEXT_PUBLIC_ZINCH_PROGRAM_ID ||
     "3gm7tTj5meZP1tYjvE49zSzpjMmyywD5wqZ7jxPS7uDP"
 );
 
-// Fee recipient (platform wallet) — for now, same as deployer wallet
-// Later replace with dedicated fee recipient wallet
 export const FEE_RECIPIENT = new PublicKey(
   "5wfAAN9cZLC4L52ik2hycfXWCSpaf39GDyFa7jpimxqa"
 );
 
-/**
- * Create a Solana connection
- */
 export function getConnection(): Connection {
   return new Connection(SOLANA_RPC, "confirmed");
-}
-
-/**
- * Get the Anchor program instance
- * Wallet must be a signer (Privy embedded wallet or Phantom, etc.)
- */
-export function getProgram(wallet: any): Program {
-  const connection = getConnection();
-  const provider = new AnchorProvider(connection, wallet, {
-    commitment: "confirmed",
-    preflightCommitment: "confirmed",
-  });
-  return new Program(idl as Idl, provider);
 }
 
 /**
@@ -53,18 +40,12 @@ export function generateDealId(): Uint8Array {
   return bytes;
 }
 
-/**
- * Convert 16-byte deal ID to hex string (for URLs and DB)
- */
 export function dealIdToHex(dealId: Uint8Array): string {
   return Array.from(dealId)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
-/**
- * Convert hex string back to 16-byte deal ID
- */
 export function hexToDealId(hex: string): Uint8Array {
   const bytes = new Uint8Array(16);
   for (let i = 0; i < 16; i++) {
@@ -73,9 +54,6 @@ export function hexToDealId(hex: string): Uint8Array {
   return bytes;
 }
 
-/**
- * Derive the deal PDA (Program Derived Address)
- */
 export function getDealPDA(dealId: Uint8Array): [PublicKey, number] {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("deal"), Buffer.from(dealId)],
@@ -83,69 +61,82 @@ export function getDealPDA(dealId: Uint8Array): [PublicKey, number] {
   );
 }
 
-/**
- * Create a new deal on-chain
- */
-export async function createDealOnChain(params: {
-  wallet: any;                    // Signer (Privy embedded wallet)
-  dealId: Uint8Array;              // 16-byte deal ID
-  amountLamports: number;          // Amount in lamports (SOL * 1e9)
-  counterpartyWallet: string;      // Other party's Solana address
-  autoReleaseSeconds: number;      // 3600 - 2592000 (1 hour to 30 days)
-  acceptanceDeadline: number;      // Unix timestamp
-  kind: "workerInitiated" | "clientInitiated";
-}): Promise<{ signature: string; dealPubkey: string }> {
-  const {
-    wallet,
-    dealId,
-    amountLamports,
-    counterpartyWallet,
-    autoReleaseSeconds,
-    acceptanceDeadline,
-    kind,
-  } = params;
-
-  const program = getProgram(wallet);
-  const [dealPDA] = getDealPDA(dealId);
-  const counterpartyPubkey = new PublicKey(counterpartyWallet);
-
-  const kindEnum =
-    kind === "workerInitiated"
-      ? { workerInitiated: {} }
-      : { clientInitiated: {} };
-
-  const signature = await program.methods
-    .createDeal(
-      Array.from(dealId),
-      new BN(amountLamports),
-      counterpartyPubkey,
-      autoReleaseSeconds,
-      new BN(acceptanceDeadline),
-      kindEnum as any
-    )
-    .accounts({
-      creator: wallet.publicKey,
-      deal: dealPDA,
-      systemProgram: SystemProgram.programId,
-    })
-    .rpc();
-
-  return {
-    signature,
-    dealPubkey: dealPDA.toBase58(),
-  };
+export function solToLamports(sol: number): number {
+  return Math.floor(sol * 1e9);
 }
 
-/**
- * Format lamports as human-readable SOL amount
- */
 export function formatSol(lamports: number): string {
   return (lamports / 1e9).toFixed(4) + " SOL";
 }
 
 /**
- * Parse SOL string to lamports
+ * Anchor uses this discriminator format for instructions:
+ * First 8 bytes of SHA-256("global:instruction_name")
+ * We hardcode the discriminator for create_deal
  */
-export function solToLamports(sol: number): number {
-  return Math.floor(sol * 1e9);
+const CREATE_DEAL_DISCRIMINATOR = new Uint8Array([
+  105, 71, 175, 12, 111, 41, 236, 65,
+]);
+
+/**
+ * Build the raw create_deal instruction manually (without full Anchor client)
+ */
+export function buildCreateDealInstruction(params: {
+  creatorPubkey: PublicKey;
+  dealPDA: PublicKey;
+  dealId: Uint8Array;
+  amountLamports: number;
+  counterpartyPubkey: PublicKey;
+  autoReleaseSeconds: number;
+  acceptanceDeadline: number;
+  kind: "workerInitiated" | "clientInitiated";
+}): TransactionInstruction {
+  const {
+    creatorPubkey,
+    dealPDA,
+    dealId,
+    amountLamports,
+    counterpartyPubkey,
+    autoReleaseSeconds,
+    acceptanceDeadline,
+    kind,
+  } = params;
+
+  // Build instruction data buffer
+  const dataLayout = borsh.struct([
+    borsh.array(borsh.u8(), 16, "dealId"),
+    borsh.u64("amount"),
+    borsh.publicKey("counterparty"),
+    borsh.u32("autoReleaseSeconds"),
+    borsh.i64("acceptanceDeadline"),
+    borsh.u8("kind"),
+  ]);
+
+  const buffer = Buffer.alloc(1000);
+  const len = dataLayout.encode(
+    {
+      dealId: Array.from(dealId),
+      amount: new BN(amountLamports),
+      counterparty: counterpartyPubkey,
+      autoReleaseSeconds,
+      acceptanceDeadline: new BN(acceptanceDeadline),
+      kind: kind === "workerInitiated" ? 0 : 1,
+    },
+    buffer
+  );
+
+  const data = Buffer.concat([
+    Buffer.from(CREATE_DEAL_DISCRIMINATOR),
+    buffer.slice(0, len),
+  ]);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: creatorPubkey, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId: PROGRAM_ID,
+    data,
+  });
 }

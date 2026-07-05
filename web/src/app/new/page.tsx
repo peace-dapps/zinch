@@ -3,12 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
+import { PublicKey, Transaction } from "@solana/web3.js";
 import Nav from "@/components/landing/Nav";
 import {
-  createDealOnChain,
+  buildCreateDealInstruction,
   generateDealId,
   dealIdToHex,
   solToLamports,
+  getConnection,
+  getDealPDA,
 } from "@/lib/anchor";
 
 type DealKind = "workerInitiated" | "clientInitiated";
@@ -79,7 +82,6 @@ export default function NewDeal() {
       return;
     }
 
-    // Get Solana wallet from Privy user object
     const solanaWalletAccount = user?.linkedAccounts?.find(
       (a: any) => a.type === "wallet" && a.chainType === "solana"
     ) as any;
@@ -89,12 +91,7 @@ export default function NewDeal() {
       return;
     }
 
-    const solanaWallet = {
-      address: solanaWalletAccount.address,
-      publicKey: solanaWalletAccount.address,
-    };
-
-    console.log("Using wallet:", solanaWallet);
+    const creatorAddress = solanaWalletAccount.address;
 
     setLoading(true);
 
@@ -107,27 +104,49 @@ export default function NewDeal() {
       const acceptanceDeadline =
         Math.floor(Date.now() / 1000) + parseInt(acceptanceDays) * 86400;
 
-      const { signature } = await createDealOnChain({
-        wallet: solanaWallet,
+      const creatorPubkey = new PublicKey(creatorAddress);
+      const counterpartyPubkey = new PublicKey(counterparty.trim());
+      const [dealPDA] = getDealPDA(dealId);
+
+      const instruction = buildCreateDealInstruction({
+        creatorPubkey,
+        dealPDA,
         dealId,
         amountLamports,
-        counterpartyWallet: counterparty.trim(),
+        counterpartyPubkey,
         autoReleaseSeconds,
         acceptanceDeadline,
         kind,
       });
 
+      const connection = getConnection();
+      const { blockhash } = await connection.getLatestBlockhash();
+
+      const transaction = new Transaction({
+        recentBlockhash: blockhash,
+        feePayer: creatorPubkey,
+      });
+      transaction.add(instruction);
+
+      // TODO: Sign via Privy REST API (workaround for broken /solana subpath)
+      console.log("Would send transaction:", transaction);
+      console.log("Creator address:", creatorAddress);
+      console.log("Deal PDA:", dealPDA.toBase58());
+      
+      // For now, just save to DB without on-chain call
+      const signature = "pending_" + dealIdHex.slice(0, 8);
+
       const workerWallet =
-        kind === "workerInitiated" ? solanaWallet.address : counterparty.trim();
+        kind === "workerInitiated" ? creatorAddress : counterparty.trim();
       const clientWallet =
-        kind === "clientInitiated" ? solanaWallet.address : counterparty.trim();
+        kind === "clientInitiated" ? creatorAddress : counterparty.trim();
 
       const res = await fetch("/api/create-deal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           dealId: dealIdHex,
-          creatorWallet: solanaWallet.address,
+          creatorWallet: creatorAddress,
           counterpartyWallet: counterparty.trim(),
           workerWallet,
           clientWallet,
@@ -135,7 +154,8 @@ export default function NewDeal() {
           description: description.trim() || null,
           amountLamports,
           amountDisplay: `${amount} SOL`,
-          kind: kind === "workerInitiated" ? "worker_initiated" : "client_initiated",
+          kind:
+            kind === "workerInitiated" ? "worker_initiated" : "client_initiated",
           autoReleaseSeconds,
           acceptanceDeadline: new Date(acceptanceDeadline * 1000).toISOString(),
           createTxSignature: signature,
