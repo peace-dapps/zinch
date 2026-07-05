@@ -36,15 +36,24 @@ export default function Nav() {
 
         {authenticated ? (
           <div className="flex items-center gap-2">
-            <span className="hidden px-3 py-2 text-sm text-text-muted sm:block">
-              {displayName}
-            </span>
-            <button onClick={logout} className="ml-2 border border-border bg-transparent px-4 py-2 text-sm font-medium text-text transition-all hover:border-border-hover hover:bg-surface">
+            
+          <a    href="/dashboard"
+              className="ml-2 bg-lime px-4 py-2 text-sm font-medium text-bg transition-all hover:opacity-90"
+            >
+              Dashboard
+            </a>
+            <button
+              onClick={logout}
+              className="hidden border border-border bg-transparent px-4 py-2 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text sm:block"
+            >
               Sign out
             </button>
           </div>
         ) : (
-          <button onClick={login} className="ml-2 bg-lime px-4 py-2 text-sm font-medium text-bg transition-all hover:opacity-90">
+          <button
+            onClick={login}
+            className="ml-2 bg-lime px-4 py-2 text-sm font-medium text-bg transition-all hover:opacity-90"
+          >
             Sign in
           </button>
         )}

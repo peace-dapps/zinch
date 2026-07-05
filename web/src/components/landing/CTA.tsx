@@ -19,7 +19,10 @@ export default function CTA() {
           </p>
 
           <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <button className="inline-flex w-full items-center justify-center gap-2 bg-lime px-8 py-4 text-sm font-medium tracking-tight text-bg transition-all duration-200 hover:opacity-90 active:scale-95 sm:w-auto">
+            
+             <a href="/new"
+              className="inline-flex w-full items-center justify-center gap-2 bg-lime px-8 py-4 text-sm font-medium tracking-tight text-bg transition-all duration-200 hover:opacity-90 active:scale-95 sm:w-auto"
+            >
               Create a deal
               <svg
                 width="14"
@@ -31,10 +34,13 @@ export default function CTA() {
               >
                 <path d="M5 12h14M13 6l6 6-6 6" />
               </svg>
-            </button>
-            <button className="w-full border border-border bg-bg px-7 py-4 text-sm font-medium text-text transition-all duration-200 hover:border-border-hover hover:bg-surface sm:w-auto">
+            </a>
+            
+            <a  href="#faq"
+              className="inline-block w-full border border-border bg-bg px-7 py-4 text-center text-sm font-medium text-text transition-all duration-200 hover:border-border-hover hover:bg-surface sm:w-auto"
+            >
               Read the docs
-            </button>
+            </a>
           </div>
 
           <p className="mt-8 text-xs uppercase tracking-widest text-text-faded">

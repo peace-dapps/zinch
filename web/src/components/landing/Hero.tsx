@@ -18,7 +18,10 @@ export default function Hero() {
       </p>
 
       <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-        <button className="inline-flex items-center justify-center gap-2 bg-lime px-7 py-4 text-sm font-medium tracking-tight text-bg transition-all duration-200 hover:opacity-90 active:scale-95">
+        
+        <a  href="/new"
+          className="inline-flex items-center justify-center gap-2 bg-lime px-7 py-4 text-sm font-medium tracking-tight text-bg transition-all duration-200 hover:opacity-90 active:scale-95"
+        >
           Create a deal
           <svg
             width="14"
@@ -30,10 +33,13 @@ export default function Hero() {
           >
             <path d="M5 12h14M13 6l6 6-6 6" />
           </svg>
-        </button>
-        <button className="border border-border bg-transparent px-6 py-4 text-sm font-medium text-text transition-all duration-200 hover:border-border-hover hover:bg-surface">
+        </a>
+        
+        <a  href="#how"
+          className="inline-flex items-center justify-center border border-border bg-transparent px-6 py-4 text-sm font-medium text-text transition-all duration-200 hover:border-border-hover hover:bg-surface"
+        >
           How it works
-        </button>
+        </a>
       </div>
 
       <div className="mt-20 grid grid-cols-2 gap-x-6 gap-y-8 border-t border-border pt-10 md:grid-cols-4">
