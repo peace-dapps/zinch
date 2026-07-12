@@ -74,14 +74,18 @@ export function formatSol(lamports: number): string {
  * First 8 bytes of SHA-256("global:instruction_name")
  * We hardcode the discriminator for create_deal
  */
-const CREATE_DEAL_DISCRIMINATOR = new Uint8Array([
-  105, 71, 175, 12, 111, 41, 236, 65,
-]);
+// Anchor discriminator: sha256("global:create_deal")[0..8]
+async function computeDiscriminator(instructionName: string): Promise<Uint8Array> {
+  const preimage = `global:${instructionName}`;
+  const data = new TextEncoder().encode(preimage);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return new Uint8Array(hashBuffer).slice(0, 8);
+}
 
 /**
  * Build the raw create_deal instruction manually (without full Anchor client)
  */
-export function buildCreateDealInstruction(params: {
+export async function buildCreateDealInstruction(params: {
   creatorPubkey: PublicKey;
   dealPDA: PublicKey;
   dealId: Uint8Array;
@@ -90,7 +94,7 @@ export function buildCreateDealInstruction(params: {
   autoReleaseSeconds: number;
   acceptanceDeadline: number;
   kind: "workerInitiated" | "clientInitiated";
-}): TransactionInstruction {
+}): Promise<TransactionInstruction> {
   const {
     creatorPubkey,
     dealPDA,
@@ -125,8 +129,9 @@ export function buildCreateDealInstruction(params: {
     buffer
   );
 
+  const discriminator = await computeDiscriminator("create_deal");
   const data = Buffer.concat([
-    Buffer.from(CREATE_DEAL_DISCRIMINATOR),
+    Buffer.from(discriminator),
     buffer.slice(0, len),
   ]);
 

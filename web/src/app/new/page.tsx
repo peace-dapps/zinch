@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import Nav from "@/components/landing/Nav";
 import {
@@ -17,7 +19,8 @@ import {
 type DealKind = "workerInitiated" | "clientInitiated";
 
 export default function NewDeal() {
-  const { authenticated, ready, login, user } = usePrivy();
+  const { authenticated, ready, login } = usePrivy();
+  const { publicKey, sendTransaction, connected } = useWallet();
   const router = useRouter();
 
   const [kind, setKind] = useState<DealKind>("workerInitiated");
@@ -69,6 +72,10 @@ export default function NewDeal() {
   const handleSubmit = async () => {
     setError(null);
 
+    if (!connected || !publicKey) {
+      setError("Please connect your Phantom wallet first.");
+      return;
+    }
     if (!title.trim()) {
       setError("Deal title is required");
       return;
@@ -82,16 +89,7 @@ export default function NewDeal() {
       return;
     }
 
-    const solanaWalletAccount = user?.linkedAccounts?.find(
-      (a: any) => a.type === "wallet" && a.chainType === "solana"
-    ) as any;
-
-    if (!solanaWalletAccount?.address) {
-      setError("No Solana wallet found. Please try signing out and back in.");
-      return;
-    }
-
-    const creatorAddress = solanaWalletAccount.address;
+    const creatorAddress = publicKey.toBase58();
 
     setLoading(true);
 
@@ -104,12 +102,11 @@ export default function NewDeal() {
       const acceptanceDeadline =
         Math.floor(Date.now() / 1000) + parseInt(acceptanceDays) * 86400;
 
-      const creatorPubkey = new PublicKey(creatorAddress);
       const counterpartyPubkey = new PublicKey(counterparty.trim());
       const [dealPDA] = getDealPDA(dealId);
 
-      const instruction = buildCreateDealInstruction({
-        creatorPubkey,
+      const instruction = await buildCreateDealInstruction({
+        creatorPubkey: publicKey,
         dealPDA,
         dealId,
         amountLamports,
@@ -124,17 +121,33 @@ export default function NewDeal() {
 
       const transaction = new Transaction({
         recentBlockhash: blockhash,
-        feePayer: creatorPubkey,
+        feePayer: publicKey,
       });
       transaction.add(instruction);
 
-      // TODO: Sign via Privy REST API (workaround for broken /solana subpath)
-      console.log("Would send transaction:", transaction);
-      console.log("Creator address:", creatorAddress);
-      console.log("Deal PDA:", dealPDA.toBase58());
-      
-      // For now, just save to DB without on-chain call
-      const signature = "pending_" + dealIdHex.slice(0, 8);
+      // Simulate first to get useful errors
+      console.log("Simulating transaction...");
+      const simResult = await connection.simulateTransaction(transaction);
+      console.log("Simulation result:", simResult);
+      if (simResult.value.err) {
+        console.error("Simulation error:", simResult.value.err);
+        console.error("Simulation logs:", simResult.value.logs);
+        throw new Error(
+          "Simulation failed: " +
+            JSON.stringify(simResult.value.err) +
+            "\nLogs: " +
+            (simResult.value.logs?.join("\n") || "no logs")
+        );
+      }
+
+      // Sign and send via Phantom
+      const signature = await sendTransaction(transaction, connection);
+
+      console.log("Transaction sent:", signature);
+      // Wait for confirmation
+      await connection.confirmTransaction(signature, "confirmed");
+
+      console.log("Transaction confirmed:", signature);
 
       const workerWallet =
         kind === "workerInitiated" ? creatorAddress : counterparty.trim();
@@ -169,7 +182,21 @@ export default function NewDeal() {
       router.push(`/d/${dealIdHex}`);
     } catch (err: any) {
       console.error("Deal creation error:", err);
-      setError(err.message || "Something went wrong. Please try again.");
+      console.error("Error name:", err.name);
+      console.error("Error message:", err.message);
+      console.error("Error cause:", err.cause);
+      console.error("Error logs:", err.logs);
+      if (err.cause) {
+        console.error("Cause details:", JSON.stringify(err.cause, null, 2));
+      }
+      // Try to extract logs from wallet error
+      const walletError = err.error || err.cause;
+      if (walletError) {
+        console.error("Wallet error details:", walletError);
+      }
+      setError(
+        err.message + (err.cause ? ` | Cause: ${JSON.stringify(err.cause)}` : "")
+      );
       setLoading(false);
     }
   };
@@ -188,6 +215,47 @@ export default function NewDeal() {
         <p className="mb-12 text-text-muted">
           Set the terms. Get a shareable link. Lock funds in escrow on Solana.
         </p>
+
+        {!connected && (
+          <div className="mb-8 border border-lime/30 bg-lime/5 p-6">
+            <div className="mb-3 text-xs uppercase tracking-widest text-lime">
+              // WALLET REQUIRED
+            </div>
+            <p className="mb-4 text-sm text-text-muted">
+              Connect your Phantom wallet to sign the transaction that creates
+              this deal on Solana.
+            </p>
+            <WalletMultiButton
+              style={{
+                backgroundColor: "#C4FF3E",
+                color: "#0A0A0A",
+                borderRadius: 0,
+                padding: "0.75rem 1.5rem",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+                height: "auto",
+                fontFamily: "inherit",
+              }}
+            />
+          </div>
+        )}
+
+        {connected && publicKey && (
+          <div className="mb-8 border border-border bg-surface p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="mb-1 text-xs uppercase tracking-widest text-text-faded">
+                  Signing wallet
+                </div>
+                <div className="font-mono text-sm text-text">
+                  {publicKey.toBase58().slice(0, 6)}...
+                  {publicKey.toBase58().slice(-6)}
+                </div>
+              </div>
+              <div className="text-xs text-lime">CONNECTED</div>
+            </div>
+          </div>
+        )}
 
         <div className="mb-10">
           <div className="mb-3 text-xs uppercase tracking-widest text-text-faded">
@@ -329,15 +397,19 @@ export default function NewDeal() {
 
         <button
           onClick={handleSubmit}
-          disabled={loading}
+          disabled={loading || !connected}
           className="w-full bg-lime px-7 py-5 text-base font-medium tracking-tight text-bg transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
         >
-          {loading ? "Creating deal on Solana..." : "Create deal"}
+          {loading
+            ? "Creating deal on Solana..."
+            : !connected
+              ? "Connect wallet first"
+              : "Create deal"}
         </button>
 
         <p className="mt-6 text-xs text-text-faded">
           This will call the Zinch escrow program on Solana devnet. You'll
-          approve one transaction with your wallet.
+          approve one transaction with Phantom.
         </p>
       </div>
     </main>

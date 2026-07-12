@@ -14,6 +14,9 @@ importers:
       '@coral-xyz/borsh':
         specifier: ^0.32.1
         version: 0.32.1(@solana/web3.js@1.98.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6))
+      '@noble/hashes':
+        specifier: ^2.2.0
+        version: 2.2.0
       '@privy-io/react-auth':
         specifier: ^3.26.0
         version: 3.26.0(1dec576dc51fc46b2a7eaef33bfe89f9)
@@ -12744,7 +12747,7 @@ snapshots:
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/curves': 1.8.1
-      '@noble/hashes': 1.7.1
+      '@noble/hashes': 1.8.0
       '@scure/bip32': 1.6.2
       '@scure/bip39': 1.5.4
       abitype: 1.0.8(typescript@5.9.3)(zod@3.25.76)
