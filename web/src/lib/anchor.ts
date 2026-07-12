@@ -145,3 +145,128 @@ export async function buildCreateDealInstruction(params: {
     data,
   });
 }
+
+/**
+ * Build accept_deal instruction
+ * Signer must be the counterparty (worker if client-initiated, client if worker-initiated)
+ */
+export async function buildAcceptDealInstruction(params: {
+  signerPubkey: PublicKey;
+  dealPDA: PublicKey;
+}): Promise<TransactionInstruction> {
+  const { signerPubkey, dealPDA } = params;
+  const discriminator = await computeDiscriminator("accept_deal");
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: signerPubkey, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+    ],
+    programId: PROGRAM_ID,
+    data: Buffer.from(discriminator),
+  });
+}
+
+/**
+ * Build fund_deal instruction
+ * Client transfers (amount + fee) to the deal PDA
+ */
+export async function buildFundDealInstruction(params: {
+  clientPubkey: PublicKey;
+  dealPDA: PublicKey;
+}): Promise<TransactionInstruction> {
+  const { clientPubkey, dealPDA } = params;
+  const discriminator = await computeDiscriminator("fund_deal");
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: clientPubkey, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+    ],
+    programId: PROGRAM_ID,
+    data: Buffer.from(discriminator),
+  });
+}
+
+/**
+ * Build submit_work instruction
+ * Worker marks work as delivered
+ */
+export async function buildSubmitWorkInstruction(params: {
+  workerPubkey: PublicKey;
+  dealPDA: PublicKey;
+}): Promise<TransactionInstruction> {
+  const { workerPubkey, dealPDA } = params;
+  const discriminator = await computeDiscriminator("submit_work");
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: workerPubkey, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+    ],
+    programId: PROGRAM_ID,
+    data: Buffer.from(discriminator),
+  });
+}
+
+/**
+ * Build approve_and_release instruction
+ * Client approves. Program transfers amount to worker, fee to platform
+ */
+export async function buildApproveAndReleaseInstruction(params: {
+  clientPubkey: PublicKey;
+  dealPDA: PublicKey;
+  workerPubkey: PublicKey;
+  feeRecipient: PublicKey;
+}): Promise<TransactionInstruction> {
+  const { clientPubkey, dealPDA, workerPubkey, feeRecipient } = params;
+  const discriminator = await computeDiscriminator("approve_and_release");
+
+  // Encode the fee_recipient pubkey as the instruction argument
+  const argsBuffer = Buffer.alloc(32);
+  feeRecipient.toBuffer().copy(argsBuffer);
+
+  const data = Buffer.concat([Buffer.from(discriminator), argsBuffer]);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: clientPubkey, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: workerPubkey, isSigner: false, isWritable: true },
+      { pubkey: feeRecipient, isSigner: false, isWritable: true },
+    ],
+    programId: PROGRAM_ID,
+    data,
+  });
+}
+
+/**
+ * Build refund_deal instruction
+ * Worker signs to refund funds back to client
+ */
+export async function buildRefundDealInstruction(params: {
+  workerPubkey: PublicKey;
+  dealPDA: PublicKey;
+  clientPubkey: PublicKey;
+}): Promise<TransactionInstruction> {
+  const { workerPubkey, dealPDA, clientPubkey } = params;
+  const discriminator = await computeDiscriminator("refund_deal");
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: workerPubkey, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: clientPubkey, isSigner: false, isWritable: true },
+    ],
+    programId: PROGRAM_ID,
+    data: Buffer.from(discriminator),
+  });
+}
+
+/**
+ * Get the PDA from a hex deal ID string
+ */
+export function getDealPDAFromHex(dealIdHex: string): [PublicKey, number] {
+  return getDealPDA(hexToDealId(dealIdHex));
+}

@@ -3,7 +3,20 @@
 import { useEffect, useState } from "react";
 import { use } from "react";
 import { usePrivy } from "@privy-io/react-auth";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { PublicKey, Transaction } from "@solana/web3.js";
 import Nav from "@/components/landing/Nav";
+import {
+  buildAcceptDealInstruction,
+  buildFundDealInstruction,
+  buildSubmitWorkInstruction,
+  buildApproveAndReleaseInstruction,
+  buildRefundDealInstruction,
+  getConnection,
+  getDealPDAFromHex,
+  FEE_RECIPIENT,
+} from "@/lib/anchor";
 
 type Deal = {
   deal_id: string;
@@ -30,17 +43,15 @@ export default function DealPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const { user, authenticated, login } = usePrivy();
+  const { authenticated, login } = usePrivy();
+  const { publicKey, sendTransaction, connected } = useWallet();
   const [deal, setDeal] = useState<Deal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const currentUserWallet =
-    (user?.linkedAccounts?.find(
-      (a: any) => a.type === "wallet" && a.chainType === "solana"
-    ) as any)?.address || null;
+  const currentUserWallet = publicKey?.toBase58() || null;
 
   useEffect(() => {
     const fetchDeal = async () => {
@@ -62,26 +73,160 @@ export default function DealPage({
     fetchDeal();
   }, [id]);
 
-  const updateState = async (newState: string) => {
+  const executeAction = async (
+    action: "accept" | "fund" | "submit" | "approve" | "refund" | "cancel"
+  ) => {
+    if (!deal) return;
+    if (!connected || !publicKey) {
+      alert("Please connect your Phantom wallet first.");
+      return;
+    }
+
     setActionLoading(true);
+
     try {
+      const connection = getConnection();
+      const [dealPDA] = getDealPDAFromHex(deal.deal_id);
+      const { blockhash } = await connection.getLatestBlockhash();
+
+      const transaction = new Transaction({
+        recentBlockhash: blockhash,
+        feePayer: publicKey,
+      });
+
+      let newState = "";
+      let txSignature = "";
+
+      if (action === "accept") {
+        const ix = await buildAcceptDealInstruction({
+          signerPubkey: publicKey,
+          dealPDA,
+        });
+        transaction.add(ix);
+        newState = "accepted";
+      } else if (action === "fund") {
+        const ix = await buildFundDealInstruction({
+          clientPubkey: publicKey,
+          dealPDA,
+        });
+        transaction.add(ix);
+        newState = "funded";
+      } else if (action === "submit") {
+        const ix = await buildSubmitWorkInstruction({
+          workerPubkey: publicKey,
+          dealPDA,
+        });
+        transaction.add(ix);
+        newState = "submitted";
+      } else if (action === "approve") {
+        const ix = await buildApproveAndReleaseInstruction({
+          clientPubkey: publicKey,
+          dealPDA,
+          workerPubkey: new PublicKey(deal.worker_wallet),
+          feeRecipient: FEE_RECIPIENT,
+        });
+        transaction.add(ix);
+        newState = "completed";
+      } else if (action === "refund") {
+        const ix = await buildRefundDealInstruction({
+          workerPubkey: publicKey,
+          dealPDA,
+          clientPubkey: new PublicKey(deal.client_wallet),
+        });
+        transaction.add(ix);
+        newState = "refunded";
+      } else if (action === "cancel") {
+        // Cancel is DB-only for now (no on-chain call needed for created state)
+        newState = "cancelled";
+      }
+
+      if (action !== "cancel") {
+        // Simulate first for better errors
+        const simResult = await connection.simulateTransaction(transaction);
+        if (simResult.value.err) {
+          console.error("Simulation failed:", simResult.value.err);
+          console.error("Logs:", simResult.value.logs);
+          throw new Error(
+            "Transaction would fail: " +
+              JSON.stringify(simResult.value.err) +
+              "\n" +
+              (simResult.value.logs?.join("\n") || "")
+          );
+        }
+
+        txSignature = await sendTransaction(transaction, connection);
+        await connection.confirmTransaction(txSignature, "confirmed");
+        console.log(`${action} tx confirmed:`, txSignature);
+      }
+
+      // Update Supabase
       const res = await fetch(`/api/deal/${id}/state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           newState,
           actorWallet: currentUserWallet,
+          txSignature: txSignature || undefined,
         }),
       });
-      if (!res.ok) {
-        const err = await res.json();
-        alert(err.error || "Action failed");
-      } else {
-        const data = await res.json();
-        setDeal(data.deal);
+      const responseText = await res.text();
+      let responseData: any = {};
+      try {
+        responseData = responseText ? JSON.parse(responseText) : {};
+      } catch (parseErr) {
+        console.error("Failed to parse response:", responseText);
       }
-    } catch (err) {
-      alert("Something went wrong");
+
+      if (!res.ok) {
+        console.error("DB update failed. Status:", res.status, "Body:", responseText);
+        alert(
+          "DB update failed (status " + res.status + "): " +
+            (responseData.error || responseText || "Empty response")
+        );
+      } else if (responseData.deal) {
+        setDeal(responseData.deal);
+      } else {
+        // Fallback: refetch the deal
+        const fresh = await fetch(`/api/deal/${id}`);
+        if (fresh.ok) {
+          const freshData = await fresh.json();
+          setDeal(freshData.deal);
+        }
+      }
+    } catch (err: any) {
+      console.error(`${action} error:`, err);
+      console.error("Error name:", err.name);
+      console.error("Error message:", err.message);
+      console.error("Error logs:", err.logs);
+      console.error("Error cause:", err.cause);
+
+      // Try to simulate to get more info
+      try {
+        console.log("Attempting manual simulation for debugging...");
+        const connection = getConnection();
+        const [dealPDA] = getDealPDAFromHex(deal!.deal_id);
+        const { blockhash } = await connection.getLatestBlockhash();
+        const debugTx = new Transaction({
+          recentBlockhash: blockhash,
+          feePayer: publicKey!,
+        });
+
+        if (action === "submit") {
+          const ix = await buildSubmitWorkInstruction({
+            workerPubkey: publicKey!,
+            dealPDA,
+          });
+          debugTx.add(ix);
+        }
+
+        const sim = await connection.simulateTransaction(debugTx);
+        console.log("Debug simulation err:", sim.value.err);
+        console.log("Debug simulation logs:", sim.value.logs);
+      } catch (debugErr) {
+        console.log("Debug sim failed:", debugErr);
+      }
+
+      alert(err.message || `${action} failed. See console.`);
     } finally {
       setActionLoading(false);
     }
@@ -141,9 +286,7 @@ export default function DealPage({
 
   const stateInfo = stateLabels[deal.state] || stateLabels.created;
 
-  const feeAmount = Math.floor(
-    (deal.amount_lamports * 150) / 10_000
-  );
+  const feeAmount = Math.floor((deal.amount_lamports * 150) / 10_000);
   const totalLock = deal.amount_lamports + feeAmount;
 
   return (
@@ -151,7 +294,6 @@ export default function DealPage({
       <Nav />
 
       <div className="mx-auto max-w-2xl px-6 pb-24 pt-32 md:px-8 md:pt-40">
-        {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div className="text-xs tracking-wider text-text-faded">
             DEAL #{id.slice(0, 8).toUpperCase()}
@@ -164,7 +306,6 @@ export default function DealPage({
           </div>
         </div>
 
-        {/* Title + amount */}
         <div className="mb-8 border border-border bg-surface p-8 md:p-10">
           <div className="mb-1 text-sm text-text-faded">
             From{" "}
@@ -228,7 +369,6 @@ export default function DealPage({
           </div>
         </div>
 
-        {/* Actions */}
         {!authenticated && (
           <div className="mb-6 border border-border p-6 text-center">
             <p className="mb-4 text-sm text-text-muted">
@@ -243,7 +383,29 @@ export default function DealPage({
           </div>
         )}
 
-        {authenticated && !isParty && deal.state === "created" && (
+        {authenticated && !connected && (
+          <div className="mb-6 border border-lime/30 bg-lime/5 p-6 text-center">
+            <p className="mb-4 text-sm text-text-muted">
+              Connect your Phantom wallet to interact with this deal.
+            </p>
+            <div className="inline-block">
+              <WalletMultiButton
+                style={{
+                  backgroundColor: "#C4FF3E",
+                  color: "#0A0A0A",
+                  borderRadius: 0,
+                  padding: "0.75rem 1.5rem",
+                  fontSize: "0.875rem",
+                  fontWeight: 500,
+                  height: "auto",
+                  fontFamily: "inherit",
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {authenticated && connected && !isParty && deal.state === "created" && (
           <div className="mb-6 border border-border p-6 text-center">
             <p className="text-sm text-text-muted">
               You are not the counterparty for this deal. Only{" "}
@@ -256,17 +418,17 @@ export default function DealPage({
           </div>
         )}
 
-        {authenticated && isParty && deal.state === "created" && (
+        {authenticated && connected && isParty && deal.state === "created" && (
           <div className="mb-6">
             <button
-              onClick={() => updateState("accepted")}
+              onClick={() => executeAction("accept")}
               disabled={actionLoading}
               className="mb-2 w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
             >
-              {actionLoading ? "Processing..." : "Accept this deal"}
+              {actionLoading ? "Signing on-chain..." : "Accept this deal"}
             </button>
             <button
-              onClick={() => updateState("cancelled")}
+              onClick={() => executeAction("cancel")}
               disabled={actionLoading}
               className="w-full border border-border py-3.5 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
             >
@@ -275,44 +437,50 @@ export default function DealPage({
           </div>
         )}
 
-        {authenticated && isClient && deal.state === "accepted" && (
+        {authenticated && connected && isClient && deal.state === "accepted" && (
           <div className="mb-6">
             <button
-              onClick={() => updateState("funded")}
+              onClick={() => executeAction("fund")}
               disabled={actionLoading}
               className="w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
             >
-              {actionLoading ? "Processing..." : `Fund deal (${(totalLock / 1e9).toFixed(4)} SOL)`}
+              {actionLoading
+                ? "Funding on-chain..."
+                : `Fund deal (${(totalLock / 1e9).toFixed(4)} SOL)`}
             </button>
             <p className="mt-3 text-center text-xs text-text-faded">
-              On-chain funding coming soon. Marks state as funded for now.
+              You will transfer {(totalLock / 1e9).toFixed(4)} SOL to escrow
             </p>
           </div>
         )}
 
-        {authenticated && isWorker && deal.state === "funded" && (
+        {authenticated && connected && isWorker && deal.state === "funded" && (
           <div className="mb-6">
             <button
-              onClick={() => updateState("submitted")}
+              onClick={() => executeAction("submit")}
               disabled={actionLoading}
               className="w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
             >
-              {actionLoading ? "Processing..." : "Submit work as delivered"}
+              {actionLoading
+                ? "Submitting on-chain..."
+                : "Submit work as delivered"}
             </button>
           </div>
         )}
 
-        {authenticated && isClient && deal.state === "submitted" && (
+        {authenticated && connected && isClient && deal.state === "submitted" && (
           <div className="mb-6">
             <button
-              onClick={() => updateState("completed")}
+              onClick={() => executeAction("approve")}
               disabled={actionLoading}
               className="mb-2 w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
             >
-              {actionLoading ? "Processing..." : "Approve & release funds"}
+              {actionLoading
+                ? "Releasing on-chain..."
+                : "Approve & release funds"}
             </button>
             <button
-              onClick={() => updateState("disputed")}
+              onClick={() => alert("Dispute flow coming soon")}
               disabled={actionLoading}
               className="w-full border border-border py-3.5 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
             >
@@ -321,7 +489,18 @@ export default function DealPage({
           </div>
         )}
 
-        {/* Share link */}
+        {authenticated && connected && isWorker && (deal.state === "funded" || deal.state === "submitted") && (
+          <div className="mb-6">
+            <button
+              onClick={() => executeAction("refund")}
+              disabled={actionLoading}
+              className="w-full border border-border py-3.5 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
+            >
+              {actionLoading ? "Refunding..." : "Refund client (full amount)"}
+            </button>
+          </div>
+        )}
+
         <div className="mb-6 border border-border bg-surface p-6">
           <div className="mb-3 text-xs uppercase tracking-widest text-text-faded">
             Shareable link
@@ -340,7 +519,6 @@ export default function DealPage({
           </div>
         </div>
 
-        {/* Parties */}
         <div className="border border-border bg-surface p-6">
           <div className="mb-4 text-xs uppercase tracking-widest text-text-faded">
             Parties
