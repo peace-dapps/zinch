@@ -242,6 +242,37 @@ export async function buildApproveAndReleaseInstruction(params: {
 }
 
 /**
+ * Build auto_release instruction
+ * Permissionless: anyone can call after timer expires
+ * Same account layout as approve_and_release
+ */
+export async function buildAutoReleaseInstruction(params: {
+  signerPubkey: PublicKey;
+  dealPDA: PublicKey;
+  workerPubkey: PublicKey;
+  feeRecipient: PublicKey;
+}): Promise<TransactionInstruction> {
+  const { signerPubkey, dealPDA, workerPubkey, feeRecipient } = params;
+  const discriminator = await computeDiscriminator("auto_release");
+
+  const argsBuffer = Buffer.alloc(32);
+  feeRecipient.toBuffer().copy(argsBuffer);
+
+  const data = Buffer.concat([Buffer.from(discriminator), argsBuffer]);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: signerPubkey, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: workerPubkey, isSigner: false, isWritable: true },
+      { pubkey: feeRecipient, isSigner: false, isWritable: true },
+    ],
+    programId: PROGRAM_ID,
+    data,
+  });
+}
+
+/**
  * Build refund_deal instruction
  * Worker signs to refund funds back to client
  */

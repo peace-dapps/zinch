@@ -98,7 +98,12 @@ export default function NewDeal() {
       const dealIdHex = dealIdToHex(dealId);
 
       const amountLamports = solToLamports(parseFloat(amount));
-      const autoReleaseSeconds = parseInt(autoReleaseHours) * 3600;
+      // For testing: treat "1" as 1 minute if <10 else hours
+const autoReleaseHoursNum = parseInt(autoReleaseHours);
+const autoReleaseSeconds =
+  autoReleaseHoursNum < 10
+    ? autoReleaseHoursNum * 60  // small numbers = minutes (for testing)
+    : autoReleaseHoursNum * 3600; // normal = hours
       const acceptanceDeadline =
         Math.floor(Date.now() / 1000) + parseInt(acceptanceDays) * 86400;
 
