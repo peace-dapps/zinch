@@ -51,6 +51,69 @@
       "args": []
     },
     {
+      "name": "accept_resolution",
+      "docs": [
+        "The OTHER party accepts the proposed resolution. Funds split accordingly."
+      ],
+      "discriminator": [
+        132,
+        187,
+        150,
+        72,
+        139,
+        8,
+        46,
+        58
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "deal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "deal.deal_id",
+                "account": "Deal"
+              }
+            ]
+          }
+        },
+        {
+          "name": "worker",
+          "writable": true
+        },
+        {
+          "name": "client",
+          "writable": true
+        },
+        {
+          "name": "fee_recipient",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "fee_recipient",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
       "name": "approve_and_release",
       "discriminator": [
         63,
@@ -65,9 +128,6 @@
       "accounts": [
         {
           "name": "client",
-          "docs": [
-            "The signer (client for approve, anyone for auto-release)"
-          ],
           "writable": true,
           "signer": true
         },
@@ -111,10 +171,6 @@
     },
     {
       "name": "auto_release",
-      "docs": [
-        "Permissionless: anyone can call after timer expires.",
-        "If client ghosts after submission, funds auto-release to worker."
-      ],
       "discriminator": [
         212,
         34,
@@ -128,9 +184,6 @@
       "accounts": [
         {
           "name": "client",
-          "docs": [
-            "The signer (client for approve, anyone for auto-release)"
-          ],
           "writable": true,
           "signer": true
         },
@@ -343,10 +396,110 @@
       "args": []
     },
     {
-      "name": "refund_deal",
+      "name": "open_dispute",
       "docs": [
-        "Worker agrees to refund funds to client (mutual cancellation after funding)."
+        "Either party opens a dispute. Deal freezes."
       ],
+      "discriminator": [
+        137,
+        25,
+        99,
+        119,
+        23,
+        223,
+        161,
+        42
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "deal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "deal.deal_id",
+                "account": "Deal"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "propose_resolution",
+      "docs": [
+        "Either party proposes a resolution split.",
+        "worker_amount + client_amount must equal deal.amount",
+        "The fee still goes to the platform regardless."
+      ],
+      "discriminator": [
+        19,
+        68,
+        181,
+        23,
+        194,
+        146,
+        152,
+        252
+      ],
+      "accounts": [
+        {
+          "name": "signer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "deal",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  101,
+                  97,
+                  108
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "deal.deal_id",
+                "account": "Deal"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "worker_amount",
+          "type": "u64"
+        },
+        {
+          "name": "client_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "refund_deal",
       "discriminator": [
         242,
         208,
@@ -460,7 +613,7 @@
     {
       "code": 6001,
       "name": "InvalidAutoReleaseWindow",
-      "msg": "Auto-release window must be between 1 hour and 30 days"
+      "msg": "Auto-release window must be between 30 minutes and 30 days"
     },
     {
       "code": 6002,
@@ -486,6 +639,11 @@
       "code": 6006,
       "name": "AutoReleaseNotReady",
       "msg": "Auto-release timer has not expired yet"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidSplit",
+      "msg": "Split amounts must sum to deal amount"
     }
   ],
   "types": [
@@ -554,6 +712,18 @@
           {
             "name": "bump",
             "type": "u8"
+          },
+          {
+            "name": "proposed_worker_amount",
+            "type": "u64"
+          },
+          {
+            "name": "proposed_client_amount",
+            "type": "u64"
+          },
+          {
+            "name": "proposed_by",
+            "type": "pubkey"
           }
         ]
       }

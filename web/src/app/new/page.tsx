@@ -28,7 +28,7 @@ export default function NewDeal() {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [counterparty, setCounterparty] = useState("");
-  const [autoReleaseHours, setAutoReleaseHours] = useState("72");
+  const [autoReleaseMinutes, setAutoReleaseMinutes] = useState("4320"); // 72 hours in minutes
   const [acceptanceDays, setAcceptanceDays] = useState("7");
 
   const [loading, setLoading] = useState(false);
@@ -98,12 +98,7 @@ export default function NewDeal() {
       const dealIdHex = dealIdToHex(dealId);
 
       const amountLamports = solToLamports(parseFloat(amount));
-      // For testing: treat "1" as 1 minute if <10 else hours
-const autoReleaseHoursNum = parseInt(autoReleaseHours);
-const autoReleaseSeconds =
-  autoReleaseHoursNum < 10
-    ? autoReleaseHoursNum * 60  // small numbers = minutes (for testing)
-    : autoReleaseHoursNum * 3600; // normal = hours
+      const autoReleaseSeconds = parseInt(autoReleaseMinutes) * 60;
       const acceptanceDeadline =
         Math.floor(Date.now() / 1000) + parseInt(acceptanceDays) * 86400;
 
@@ -362,18 +357,21 @@ const autoReleaseSeconds =
         <div className="mb-10 grid grid-cols-1 gap-6 sm:grid-cols-2">
           <div>
             <label className="mb-2 block text-xs uppercase tracking-widest text-text-faded">
-              Auto-release (hours)
+              Auto-release (minutes)
             </label>
             <input
               type="number"
-              value={autoReleaseHours}
-              onChange={(e) => setAutoReleaseHours(e.target.value)}
-              min="1"
-              max="720"
+              value={autoReleaseMinutes}
+              onChange={(e) => setAutoReleaseMinutes(e.target.value)}
+              min="30"
+              max="43200"
               className="w-full border border-border bg-bg px-4 py-4 text-text focus:border-lime focus:outline-none"
             />
             <div className="mt-2 text-xs text-text-muted">
-              If client ghosts, worker gets paid automatically after this
+              {parseInt(autoReleaseMinutes) >= 60
+                ? `≈ ${(parseInt(autoReleaseMinutes) / 60).toFixed(1)} hours`
+                : "in minutes"}
+              . If client ghosts, worker gets paid automatically after this.
             </div>
           </div>
           <div>

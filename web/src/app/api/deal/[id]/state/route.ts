@@ -18,7 +18,7 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   accepted: ["funded", "cancelled"],
   funded: ["submitted", "refunded", "disputed"],
   submitted: ["completed", "refunded", "disputed"],
-  disputed: ["completed", "refunded"],
+  disputed: ["completed", "refunded", "disputed"],
 };
 
 export async function POST(
@@ -67,6 +67,25 @@ export async function POST(
     } else if (newState === "completed") {
       updates.completed_at = new Date().toISOString();
       if (txSignature) updates.release_tx_signature = txSignature;
+      // If coming from dispute, record resolution
+      if (deal.state === "disputed") {
+        updates.resolved_at = new Date().toISOString();
+        if (txSignature) updates.resolution_tx_signature = txSignature;
+      }
+    } else if (newState === "disputed") {
+      updates.disputed_at = new Date().toISOString();
+      if (txSignature) updates.dispute_tx_signature = txSignature;
+    }
+
+    // Handle propose_resolution (state stays disputed but proposed amounts change)
+    if (body.proposedWorkerAmount !== undefined) {
+      updates.proposed_worker_amount = body.proposedWorkerAmount;
+      updates.proposed_client_amount = body.proposedClientAmount;
+      updates.proposed_by = body.proposedBy;
+      // Don't change state since propose is state-neutral within disputed
+      if (deal.state === "disputed" && newState === "disputed") {
+        delete updates.disputed_at; // Don't overwrite the original dispute time
+      }
     }
 
     const { data: updated, error: updateError } = await supabaseAdmin

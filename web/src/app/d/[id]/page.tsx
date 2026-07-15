@@ -13,6 +13,9 @@ import {
   buildSubmitWorkInstruction,
   buildApproveAndReleaseInstruction,
   buildRefundDealInstruction,
+  buildOpenDisputeInstruction,
+  buildProposeResolutionInstruction,
+  buildAcceptResolutionInstruction,
   getConnection,
   getDealPDAFromHex,
   FEE_RECIPIENT,
@@ -35,6 +38,9 @@ type Deal = {
   acceptance_deadline: string;
   created_at: string;
   create_tx_signature: string | null;
+  proposed_worker_amount: number | null;
+  proposed_client_amount: number | null;
+  proposed_by: string | null;
 };
 
 export default function DealPage({
@@ -50,6 +56,10 @@ export default function DealPage({
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // Dispute state
+  const [showProposeUI, setShowProposeUI] = useState(false);
+  const [workerPercent, setWorkerPercent] = useState(50);
 
   const currentUserWallet = publicKey?.toBase58() || null;
 
@@ -74,7 +84,15 @@ export default function DealPage({
   }, [id]);
 
   const executeAction = async (
-    action: "accept" | "fund" | "submit" | "approve" | "refund" | "cancel"
+    action:
+      | "accept"
+      | "fund"
+      | "submit"
+      | "approve"
+      | "refund"
+      | "cancel"
+      | "dispute"
+      | "acceptResolution"
   ) => {
     if (!deal) return;
     if (!connected || !publicKey) {
@@ -136,12 +154,27 @@ export default function DealPage({
         transaction.add(ix);
         newState = "refunded";
       } else if (action === "cancel") {
-        // Cancel is DB-only for now (no on-chain call needed for created state)
         newState = "cancelled";
+      } else if (action === "dispute") {
+        const ix = await buildOpenDisputeInstruction({
+          signerPubkey: publicKey,
+          dealPDA,
+        });
+        transaction.add(ix);
+        newState = "disputed";
+      } else if (action === "acceptResolution") {
+        const ix = await buildAcceptResolutionInstruction({
+          signerPubkey: publicKey,
+          dealPDA,
+          workerPubkey: new PublicKey(deal.worker_wallet),
+          clientPubkey: new PublicKey(deal.client_wallet),
+          feeRecipient: FEE_RECIPIENT,
+        });
+        transaction.add(ix);
+        newState = "completed";
       }
 
       if (action !== "cancel") {
-        // Simulate first for better errors
         const simResult = await connection.simulateTransaction(transaction);
         if (simResult.value.err) {
           console.error("Simulation failed:", simResult.value.err);
@@ -159,7 +192,6 @@ export default function DealPage({
         console.log(`${action} tx confirmed:`, txSignature);
       }
 
-      // Update Supabase
       const res = await fetch(`/api/deal/${id}/state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -169,24 +201,19 @@ export default function DealPage({
           txSignature: txSignature || undefined,
         }),
       });
+
       const responseText = await res.text();
       let responseData: any = {};
       try {
         responseData = responseText ? JSON.parse(responseText) : {};
-      } catch (parseErr) {
-        console.error("Failed to parse response:", responseText);
-      }
+      } catch {}
 
       if (!res.ok) {
-        console.error("DB update failed. Status:", res.status, "Body:", responseText);
-        alert(
-          "DB update failed (status " + res.status + "): " +
-            (responseData.error || responseText || "Empty response")
-        );
+        console.error("DB update failed:", responseText);
+        alert("DB update failed: " + (responseData.error || "Unknown"));
       } else if (responseData.deal) {
         setDeal(responseData.deal);
       } else {
-        // Fallback: refetch the deal
         const fresh = await fetch(`/api/deal/${id}`);
         if (fresh.ok) {
           const freshData = await fresh.json();
@@ -195,38 +222,77 @@ export default function DealPage({
       }
     } catch (err: any) {
       console.error(`${action} error:`, err);
-      console.error("Error name:", err.name);
-      console.error("Error message:", err.message);
-      console.error("Error logs:", err.logs);
-      console.error("Error cause:", err.cause);
+      alert(err.message || `${action} failed. See console.`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
-      // Try to simulate to get more info
-      try {
-        console.log("Attempting manual simulation for debugging...");
-        const connection = getConnection();
-        const [dealPDA] = getDealPDAFromHex(deal!.deal_id);
-        const { blockhash } = await connection.getLatestBlockhash();
-        const debugTx = new Transaction({
-          recentBlockhash: blockhash,
-          feePayer: publicKey!,
-        });
+  const proposeResolution = async () => {
+    if (!deal || !publicKey || !connected) return;
 
-        if (action === "submit") {
-          const ix = await buildSubmitWorkInstruction({
-            workerPubkey: publicKey!,
-            dealPDA,
-          });
-          debugTx.add(ix);
-        }
+    const workerAmount = Math.floor((deal.amount_lamports * workerPercent) / 100);
+    const clientAmount = deal.amount_lamports - workerAmount;
 
-        const sim = await connection.simulateTransaction(debugTx);
-        console.log("Debug simulation err:", sim.value.err);
-        console.log("Debug simulation logs:", sim.value.logs);
-      } catch (debugErr) {
-        console.log("Debug sim failed:", debugErr);
+    setActionLoading(true);
+
+    try {
+      const connection = getConnection();
+      const [dealPDA] = getDealPDAFromHex(deal.deal_id);
+      const { blockhash } = await connection.getLatestBlockhash();
+
+      const ix = await buildProposeResolutionInstruction({
+        signerPubkey: publicKey,
+        dealPDA,
+        workerAmountLamports: workerAmount,
+        clientAmountLamports: clientAmount,
+      });
+
+      const transaction = new Transaction({
+        recentBlockhash: blockhash,
+        feePayer: publicKey,
+      });
+      transaction.add(ix);
+
+      const sim = await connection.simulateTransaction(transaction);
+      if (sim.value.err) {
+        console.error("Sim failed:", sim.value.err, sim.value.logs);
+        throw new Error(
+          "Failed: " +
+            JSON.stringify(sim.value.err) +
+            "\n" +
+            (sim.value.logs?.join("\n") || "")
+        );
       }
 
-      alert(err.message || `${action} failed. See console.`);
+      const signature = await sendTransaction(transaction, connection);
+      await connection.confirmTransaction(signature, "confirmed");
+
+      // Update DB with proposed amounts (state stays disputed)
+      const res = await fetch(`/api/deal/${id}/state`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          newState: "disputed",
+          actorWallet: currentUserWallet,
+          proposedWorkerAmount: workerAmount,
+          proposedClientAmount: clientAmount,
+          proposedBy: publicKey.toBase58(),
+        }),
+      });
+
+      const responseText = await res.text();
+      const responseData = responseText ? JSON.parse(responseText) : {};
+      if (responseData.deal) setDeal(responseData.deal);
+      else {
+        const fresh = await fetch(`/api/deal/${id}`);
+        if (fresh.ok) setDeal((await fresh.json()).deal);
+      }
+
+      setShowProposeUI(false);
+    } catch (err: any) {
+      console.error("Propose error:", err);
+      alert(err.message || "Failed to propose resolution");
     } finally {
       setActionLoading(false);
     }
@@ -289,6 +355,25 @@ export default function DealPage({
   const feeAmount = Math.floor((deal.amount_lamports * 150) / 10_000);
   const totalLock = deal.amount_lamports + feeAmount;
 
+  // Dispute logic
+  const hasProposal =
+    deal.state === "disputed" &&
+    deal.proposed_by &&
+    deal.proposed_by !== "" &&
+    (deal.proposed_worker_amount || 0) + (deal.proposed_client_amount || 0) > 0;
+
+  const isProposer =
+    hasProposal && currentUserWallet === deal.proposed_by;
+  const canAcceptProposal = hasProposal && isParty && !isProposer;
+
+  const presetSplits = [
+    { worker: 100, label: "100/0" },
+    { worker: 75, label: "75/25" },
+    { worker: 50, label: "50/50" },
+    { worker: 25, label: "25/75" },
+    { worker: 0, label: "0/100" },
+  ];
+
   return (
     <main className="relative min-h-screen">
       <Nav />
@@ -299,9 +384,11 @@ export default function DealPage({
             DEAL #{id.slice(0, 8).toUpperCase()}
           </div>
           <div
-            className={`inline-flex items-center gap-1.5 border border-lime/30 bg-lime/10 px-2.5 py-1 text-xs uppercase tracking-wider ${stateInfo.color}`}
+            className={`inline-flex items-center gap-1.5 border ${
+              deal.state === "disputed" ? "border-red-500/30 bg-red-500/10" : "border-lime/30 bg-lime/10"
+            } px-2.5 py-1 text-xs uppercase tracking-wider ${stateInfo.color}`}
           >
-            <span className="h-1 w-1 rounded-full bg-lime" />
+            <span className={`h-1 w-1 rounded-full ${deal.state === "disputed" ? "bg-red-500" : "bg-lime"}`} />
             {stateInfo.label}
           </div>
         </div>
@@ -347,7 +434,9 @@ export default function DealPage({
                 Auto-release
               </div>
               <div className="text-sm font-medium text-text">
-                {Math.floor(deal.auto_release_seconds / 3600)} hours
+                {deal.auto_release_seconds >= 3600
+                  ? `${(deal.auto_release_seconds / 3600).toFixed(1)} hours`
+                  : `${Math.floor(deal.auto_release_seconds / 60)} minutes`}
               </div>
             </div>
             <div>
@@ -369,6 +458,253 @@ export default function DealPage({
           </div>
         </div>
 
+        {/* ========== DISPUTE VIEW ========== */}
+        {deal.state === "disputed" && (
+          <div className="mb-6 border border-red-500/30 bg-red-500/5 p-6">
+            <div className="mb-4 flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-red-500" />
+              <div className="text-xs uppercase tracking-widest text-red-400">
+                DISPUTE ACTIVE
+              </div>
+            </div>
+
+            {!hasProposal && (
+              <>
+                <p className="mb-6 text-sm leading-relaxed text-text-muted">
+                  This deal is frozen. Both parties need to agree on a
+                  resolution. Either of you can propose a split of the deal
+                  amount below. The platform fee still applies.
+                </p>
+
+                {isParty && !showProposeUI && (
+                  <button
+                    onClick={() => setShowProposeUI(true)}
+                    className="w-full bg-lime py-3.5 text-sm font-medium tracking-tight text-bg transition-all hover:opacity-90"
+                  >
+                    Propose a resolution
+                  </button>
+                )}
+
+                {isParty && showProposeUI && (
+                  <div>
+                    <div className="mb-4 text-xs uppercase tracking-widest text-text-faded">
+                      Choose a split
+                    </div>
+
+                    {/* Preset buttons */}
+                    <div className="mb-5 grid grid-cols-5 gap-2">
+                      {presetSplits.map((preset) => (
+                        <button
+                          key={preset.label}
+                          onClick={() => setWorkerPercent(preset.worker)}
+                          className={`border py-2 text-xs font-medium transition-all ${
+                            workerPercent === preset.worker
+                              ? "border-lime bg-lime/10 text-lime"
+                              : "border-border text-text-muted hover:border-border-hover hover:text-text"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Slider */}
+                    <div className="mb-5">
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="5"
+                        value={workerPercent}
+                        onChange={(e) =>
+                          setWorkerPercent(parseInt(e.target.value))
+                        }
+                        className="w-full accent-lime"
+                      />
+                    </div>
+
+                    {/* Split preview */}
+                    <div className="mb-5 grid grid-cols-2 gap-2 border border-border bg-bg p-4">
+                      <div>
+                        <div className="mb-1 text-xs uppercase tracking-wider text-text-faded">
+                          Worker gets
+                        </div>
+                        <div className="text-lg font-bold tabular-nums text-lime">
+                          {workerPercent}%
+                        </div>
+                        <div className="text-xs text-text-muted">
+                          {((deal.amount_lamports * workerPercent) / 100 / 1e9).toFixed(4)} SOL
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="mb-1 text-xs uppercase tracking-wider text-text-faded">
+                          Client gets
+                        </div>
+                        <div className="text-lg font-bold tabular-nums text-lime">
+                          {100 - workerPercent}%
+                        </div>
+                        <div className="text-xs text-text-muted">
+                          {((deal.amount_lamports * (100 - workerPercent)) / 100 / 1e9).toFixed(4)} SOL
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={proposeResolution}
+                        disabled={actionLoading}
+                        className="flex-1 bg-lime py-3 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
+                      >
+                        {actionLoading ? "Signing..." : "Submit proposal"}
+                      </button>
+                      <button
+                        onClick={() => setShowProposeUI(false)}
+                        disabled={actionLoading}
+                        className="border border-border px-4 py-3 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {hasProposal && (
+              <>
+                <div className="mb-4 text-xs text-text-muted">
+                  Proposed by{" "}
+                  <span className="font-mono text-text">
+                    {(deal.proposed_by || "").slice(0, 4)}...
+                    {(deal.proposed_by || "").slice(-4)}
+                  </span>
+                </div>
+
+                <div className="mb-5 grid grid-cols-2 gap-2 border border-border bg-bg p-4">
+                  <div>
+                    <div className="mb-1 text-xs uppercase tracking-wider text-text-faded">
+                      Worker receives
+                    </div>
+                    <div className="text-2xl font-bold tabular-nums text-lime">
+                      {((deal.proposed_worker_amount || 0) / 1e9).toFixed(4)}
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      {Math.round(
+                        ((deal.proposed_worker_amount || 0) /
+                          deal.amount_lamports) *
+                          100
+                      )}
+                      % · SOL
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="mb-1 text-xs uppercase tracking-wider text-text-faded">
+                      Client refunded
+                    </div>
+                    <div className="text-2xl font-bold tabular-nums text-lime">
+                      {((deal.proposed_client_amount || 0) / 1e9).toFixed(4)}
+                    </div>
+                    <div className="text-xs text-text-muted">
+                      {Math.round(
+                        ((deal.proposed_client_amount || 0) /
+                          deal.amount_lamports) *
+                          100
+                      )}
+                      % · SOL
+                    </div>
+                  </div>
+                </div>
+
+                {canAcceptProposal && (
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => executeAction("acceptResolution")}
+                      disabled={actionLoading}
+                      className="w-full bg-lime py-3.5 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
+                    >
+                      {actionLoading ? "Signing..." : "Accept & execute split"}
+                    </button>
+                    <button
+                      onClick={() => setShowProposeUI(true)}
+                      disabled={actionLoading}
+                      className="w-full border border-border py-3 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
+                    >
+                      Propose different split
+                    </button>
+                  </div>
+                )}
+
+                {isProposer && (
+                  <p className="text-center text-xs text-text-faded">
+                    Waiting for the other party to accept.
+                  </p>
+                )}
+
+                {isParty && showProposeUI && (
+                  <div className="mt-6 border-t border-border pt-6">
+                    <div className="mb-4 text-xs uppercase tracking-widest text-text-faded">
+                      Propose different split
+                    </div>
+                    <div className="mb-5 grid grid-cols-5 gap-2">
+                      {presetSplits.map((preset) => (
+                        <button
+                          key={preset.label}
+                          onClick={() => setWorkerPercent(preset.worker)}
+                          className={`border py-2 text-xs font-medium transition-all ${
+                            workerPercent === preset.worker
+                              ? "border-lime bg-lime/10 text-lime"
+                              : "border-border text-text-muted hover:border-border-hover hover:text-text"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mb-5">
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="5"
+                        value={workerPercent}
+                        onChange={(e) => setWorkerPercent(parseInt(e.target.value))}
+                        className="w-full accent-lime"
+                      />
+                    </div>
+                    <div className="mb-5 grid grid-cols-2 gap-2 border border-border bg-bg p-4">
+                      <div>
+                        <div className="mb-1 text-xs text-text-faded">Worker</div>
+                        <div className="text-lg font-bold text-lime">{workerPercent}%</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="mb-1 text-xs text-text-faded">Client</div>
+                        <div className="text-lg font-bold text-lime">{100 - workerPercent}%</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={proposeResolution}
+                        disabled={actionLoading}
+                        className="flex-1 bg-lime py-3 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
+                      >
+                        {actionLoading ? "Signing..." : "Submit counter proposal"}
+                      </button>
+                      <button
+                        onClick={() => setShowProposeUI(false)}
+                        disabled={actionLoading}
+                        className="border border-border px-4 py-3 text-sm text-text-muted transition-all hover:border-border-hover hover:text-text"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ========== NORMAL ACTION BUTTONS ========== */}
         {!authenticated && (
           <div className="mb-6 border border-border p-6 text-center">
             <p className="mb-4 text-sm text-text-muted">
@@ -448,41 +784,65 @@ export default function DealPage({
                 ? "Funding on-chain..."
                 : `Fund deal (${(totalLock / 1e9).toFixed(4)} SOL)`}
             </button>
-            <p className="mt-3 text-center text-xs text-text-faded">
-              You will transfer {(totalLock / 1e9).toFixed(4)} SOL to escrow
-            </p>
           </div>
         )}
 
         {authenticated && connected && isWorker && deal.state === "funded" && (
-          <div className="mb-6">
+          <div className="mb-6 space-y-2">
             <button
               onClick={() => executeAction("submit")}
               disabled={actionLoading}
               className="w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
             >
-              {actionLoading
-                ? "Submitting on-chain..."
-                : "Submit work as delivered"}
+              {actionLoading ? "Submitting..." : "Submit work as delivered"}
+            </button>
+            <button
+              onClick={() => executeAction("dispute")}
+              disabled={actionLoading}
+              className="w-full border border-red-500/30 py-3 text-sm font-medium text-red-400 transition-all hover:border-red-500/50 disabled:opacity-50"
+            >
+              Open dispute
+            </button>
+          </div>
+        )}
+
+        {authenticated && connected && isClient && deal.state === "funded" && (
+          <div className="mb-6">
+            <button
+              onClick={() => executeAction("dispute")}
+              disabled={actionLoading}
+              className="w-full border border-red-500/30 py-3 text-sm font-medium text-red-400 transition-all hover:border-red-500/50 disabled:opacity-50"
+            >
+              Open dispute
             </button>
           </div>
         )}
 
         {authenticated && connected && isClient && deal.state === "submitted" && (
-          <div className="mb-6">
+          <div className="mb-6 space-y-2">
             <button
               onClick={() => executeAction("approve")}
               disabled={actionLoading}
-              className="mb-2 w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
+              className="w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
             >
-              {actionLoading
-                ? "Releasing on-chain..."
-                : "Approve & release funds"}
+              {actionLoading ? "Releasing..." : "Approve & release funds"}
             </button>
             <button
-              onClick={() => alert("Dispute flow coming soon")}
+              onClick={() => executeAction("dispute")}
               disabled={actionLoading}
-              className="w-full border border-border py-3.5 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
+              className="w-full border border-red-500/30 py-3 text-sm font-medium text-red-400 transition-all hover:border-red-500/50 disabled:opacity-50"
+            >
+              Open dispute
+            </button>
+          </div>
+        )}
+
+        {authenticated && connected && isWorker && deal.state === "submitted" && (
+          <div className="mb-6">
+            <button
+              onClick={() => executeAction("dispute")}
+              disabled={actionLoading}
+              className="w-full border border-red-500/30 py-3 text-sm font-medium text-red-400 transition-all hover:border-red-500/50 disabled:opacity-50"
             >
               Open dispute
             </button>
@@ -494,7 +854,7 @@ export default function DealPage({
             <button
               onClick={() => executeAction("refund")}
               disabled={actionLoading}
-              className="w-full border border-border py-3.5 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
+              className="w-full border border-border py-3 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
             >
               {actionLoading ? "Refunding..." : "Refund client (full amount)"}
             </button>

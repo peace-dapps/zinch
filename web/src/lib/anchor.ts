@@ -296,6 +296,105 @@ export async function buildRefundDealInstruction(params: {
 }
 
 /**
+ * Build open_dispute instruction
+ * Either party freezes the deal
+ */
+export async function buildOpenDisputeInstruction(params: {
+  signerPubkey: PublicKey;
+  dealPDA: PublicKey;
+}): Promise<TransactionInstruction> {
+  const { signerPubkey, dealPDA } = params;
+  const discriminator = await computeDiscriminator("open_dispute");
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: signerPubkey, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+    ],
+    programId: PROGRAM_ID,
+    data: Buffer.from(discriminator),
+  });
+}
+
+/**
+ * Build propose_resolution instruction
+ * Either party proposes a split: worker_amount + client_amount == deal.amount
+ */
+export async function buildProposeResolutionInstruction(params: {
+  signerPubkey: PublicKey;
+  dealPDA: PublicKey;
+  workerAmountLamports: number;
+  clientAmountLamports: number;
+}): Promise<TransactionInstruction> {
+  const {
+    signerPubkey,
+    dealPDA,
+    workerAmountLamports,
+    clientAmountLamports,
+  } = params;
+  const discriminator = await computeDiscriminator("propose_resolution");
+
+  // Encode two u64s (little-endian)
+  const argsBuffer = Buffer.alloc(16);
+  const writeU64LE = (buf: Buffer, value: bigint, offset: number) => {
+    for (let i = 0; i < 8; i++) {
+      buf[offset + i] = Number((value >> BigInt(8 * i)) & 0xffn);
+    }
+  };
+  writeU64LE(argsBuffer, BigInt(workerAmountLamports), 0);
+  writeU64LE(argsBuffer, BigInt(clientAmountLamports), 8);
+
+  const data = Buffer.concat([Buffer.from(discriminator), argsBuffer]);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: signerPubkey, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+    ],
+    programId: PROGRAM_ID,
+    data,
+  });
+}
+
+/**
+ * Build accept_resolution instruction
+ * The OTHER party (not proposer) accepts. Executes the split.
+ */
+export async function buildAcceptResolutionInstruction(params: {
+  signerPubkey: PublicKey;
+  dealPDA: PublicKey;
+  workerPubkey: PublicKey;
+  clientPubkey: PublicKey;
+  feeRecipient: PublicKey;
+}): Promise<TransactionInstruction> {
+  const {
+    signerPubkey,
+    dealPDA,
+    workerPubkey,
+    clientPubkey,
+    feeRecipient,
+  } = params;
+  const discriminator = await computeDiscriminator("accept_resolution");
+
+  const argsBuffer = Buffer.alloc(32);
+  feeRecipient.toBuffer().copy(argsBuffer);
+
+  const data = Buffer.concat([Buffer.from(discriminator), argsBuffer]);
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: signerPubkey, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+      { pubkey: workerPubkey, isSigner: false, isWritable: true },
+      { pubkey: clientPubkey, isSigner: false, isWritable: true },
+      { pubkey: feeRecipient, isSigner: false, isWritable: true },
+    ],
+    programId: PROGRAM_ID,
+    data,
+  });
+}
+
+/**
  * Get the PDA from a hex deal ID string
  */
 export function getDealPDAFromHex(dealIdHex: string): [PublicKey, number] {
