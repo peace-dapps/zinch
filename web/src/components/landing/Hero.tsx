@@ -1,9 +1,13 @@
 export default function Hero() {
   return (
     <section className="relative mx-auto flex min-h-screen max-w-7xl flex-col justify-center px-6 pb-16 pt-32 md:px-8 md:pt-40">
-      <div className="mb-8 flex w-fit items-center gap-2 rounded-full border border-border px-3 py-1.5 text-xs font-medium tracking-wide text-text-muted">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lime" />
-        V1 SHIPPING SOON
+      <div className="mb-8 flex w-fit items-baseline gap-3">
+        <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-lime">
+          [V1]
+        </div>
+        <div className="text-xs uppercase tracking-widest text-text-muted">
+          Live on Solana devnet
+        </div>
       </div>
 
       <h1 className="mb-7 text-5xl font-bold leading-tight tracking-tight text-text sm:text-6xl md:text-7xl lg:text-8xl">

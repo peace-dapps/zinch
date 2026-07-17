@@ -3,6 +3,7 @@
 import { PrivyProvider } from "@privy-io/react-auth";
 import { useUserSync } from "@/hooks/useUserSync";
 import { useMemo } from "react";
+import { ToastProvider } from "@/components/ui/Toast";
 import {
   ConnectionProvider,
   WalletProvider,
@@ -43,7 +44,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
               },
             }}
           >
-            <UserSyncWrapper>{children}</UserSyncWrapper>
+            <ToastProvider>
+  <UserSyncWrapper>{children}</UserSyncWrapper>
+</ToastProvider>
           </PrivyProvider>
         </WalletModalProvider>
       </WalletProvider>

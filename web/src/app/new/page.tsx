@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import Nav from "@/components/landing/Nav";
+import { useSearchParams } from "next/navigation";
 import {
   buildCreateDealInstruction,
   generateDealId,
@@ -22,6 +23,7 @@ export default function NewDeal() {
   const { authenticated, ready, login } = usePrivy();
   const { publicKey, sendTransaction, connected } = useWallet();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [kind, setKind] = useState<DealKind>("workerInitiated");
   const [title, setTitle] = useState("");
@@ -33,6 +35,11 @@ export default function NewDeal() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Prefill counterparty from URL (e.g. from "Start a deal with @user")
+  useEffect(() => {
+    const cp = searchParams.get("counterparty");
+    if (cp) setCounterparty(cp);
+  }, [searchParams]);
 
   if (!ready) {
     return (
@@ -318,9 +325,14 @@ export default function NewDeal() {
         </div>
 
         <div className="mb-8">
-          <label className="mb-2 block text-xs uppercase tracking-widest text-text-faded">
-            Amount (SOL)
-          </label>
+          <div className="mb-2 flex items-center justify-between">
+            <label className="block text-xs uppercase tracking-widest text-text-faded">
+              Amount (SOL)
+            </label>
+            <span className="border border-border bg-surface px-2 py-0.5 text-[10px] uppercase tracking-widest text-text-muted">
+              USDC in V2
+            </span>
+          </div>
           <input
             type="number"
             value={amount}

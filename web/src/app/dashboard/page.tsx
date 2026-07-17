@@ -1,74 +1,168 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
-import { useRouter } from "next/navigation";
-import Nav from "@/components/landing/Nav";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePrivy } from "@privy-io/react-auth";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import Nav from "@/components/landing/Nav";
+import { PageLoader, ShimmerRow } from "@/components/ui/Spinner";
 
 type Deal = {
   deal_id: string;
   title: string;
   amount_lamports: number;
-  amount_display: string;
   currency: string;
-  state: string;
+  kind: string;
   worker_wallet: string;
   client_wallet: string;
+  creator_wallet: string;
+  state: string;
+  auto_release_seconds: number;
+  acceptance_deadline: string;
   created_at: string;
+  submitted_at: string | null;
+  completed_at: string | null;
+  create_tx_signature: string | null;
+  fund_tx_signature: string | null;
+  release_tx_signature: string | null;
+  resolution_tx_signature: string | null;
 };
 
-const stateLabels: Record<string, { label: string; color: string }> = {
-  created: { label: "Awaiting acceptance", color: "text-lime" },
-  accepted: { label: "Awaiting funding", color: "text-lime" },
-  funded: { label: "In progress", color: "text-lime" },
-  submitted: { label: "Awaiting approval", color: "text-lime" },
-  completed: { label: "Completed", color: "text-text-muted" },
-  refunded: { label: "Refunded", color: "text-text-muted" },
-  cancelled: { label: "Cancelled", color: "text-text-muted" },
-  disputed: { label: "Disputed", color: "text-red-400" },
-  expired: { label: "Expired", color: "text-text-muted" },
-};
+const ACTIVE_STATES = ["created", "accepted", "funded", "submitted"];
+const HISTORY_STATES = ["completed", "refunded", "cancelled", "expired"];
 
-export default function Dashboard() {
-  const { ready, authenticated, user, logout } = usePrivy();
-  const router = useRouter();
+export default function DashboardPage() {
+  const { authenticated, ready, user, login, logout } = usePrivy();
+  const { publicKey, connected } = useWallet();
   const [deals, setDeals] = useState<Deal[]>([]);
-  const [dealsLoading, setDealsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(Date.now());
 
-  const walletAddress =
-    (user?.linkedAccounts?.find(
-      (a: any) => a.type === "wallet" && a.chainType === "solana"
-    ) as any)?.address || null;
+  const [historyFilter, setHistoryFilter] = useState<string>("all");
+  const [dateRange, setDateRange] = useState<string>("all");
+
+  const walletAddress = publicKey?.toBase58() || null;
 
   useEffect(() => {
-    if (ready && !authenticated) {
-      router.push("/");
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!walletAddress) {
+      setDeals([]);
+      setLoading(false);
+      return;
     }
-  }, [ready, authenticated, router]);
-
-  useEffect(() => {
-    if (!walletAddress) return;
-    const fetchDeals = async () => {
+    (async () => {
+      setLoading(true);
       try {
         const res = await fetch(`/api/deals?wallet=${walletAddress}`);
-        if (res.ok) {
-          const data = await res.json();
-          setDeals(data.deals || []);
-        }
-      } catch (err) {
-        console.error("Failed to fetch deals:", err);
+        const data = await res.json();
+        setDeals(data.deals || []);
+      } catch (e) {
+        console.error(e);
       } finally {
-        setDealsLoading(false);
+        setLoading(false);
       }
-    };
-    fetchDeals();
+    })();
   }, [walletAddress]);
+
+  const {
+    pendingAction,
+    active,
+    history,
+    totalLocked,
+    totalEarned,
+  } = useMemo(() => {
+    if (!walletAddress) {
+      return {
+        pendingAction: [],
+        active: [],
+        history: [],
+        totalLocked: 0,
+        totalEarned: 0,
+      };
+    }
+
+    const pendingAction: Deal[] = [];
+    const active: Deal[] = [];
+    const history: Deal[] = [];
+    let totalLocked = 0;
+    let totalEarned = 0;
+
+    for (const deal of deals) {
+      const isWorker = deal.worker_wallet === walletAddress;
+      const isClient = deal.client_wallet === walletAddress;
+
+      if (deal.state === "disputed") {
+        pendingAction.push(deal);
+        totalLocked += deal.amount_lamports;
+        continue;
+      }
+
+      if (ACTIVE_STATES.includes(deal.state)) {
+        const needsAction =
+          (deal.state === "created" &&
+            walletAddress !== deal.creator_wallet) ||
+          (deal.state === "accepted" && isClient) ||
+          (deal.state === "funded" && isWorker) ||
+          (deal.state === "submitted" && isClient);
+
+        if (needsAction) {
+          pendingAction.push(deal);
+        } else {
+          active.push(deal);
+        }
+
+        if (deal.state === "funded" || deal.state === "submitted") {
+          totalLocked += deal.amount_lamports;
+        }
+        continue;
+      }
+
+      if (HISTORY_STATES.includes(deal.state)) {
+        history.push(deal);
+        if (deal.state === "completed" && isWorker) {
+          totalEarned += deal.amount_lamports;
+        }
+      }
+    }
+
+    return { pendingAction, active, history, totalLocked, totalEarned };
+  }, [deals, walletAddress]);
+
+  const filteredHistory = useMemo(() => {
+    let filtered = history;
+
+    if (historyFilter !== "all") {
+      filtered = filtered.filter((d) => d.state === historyFilter);
+    }
+
+    if (dateRange !== "all") {
+      const nowMs = Date.now();
+      const ranges: Record<string, number> = {
+        "7d": 7 * 86400 * 1000,
+        "30d": 30 * 86400 * 1000,
+        "90d": 90 * 86400 * 1000,
+      };
+      const rangeMs = ranges[dateRange];
+      if (rangeMs) {
+        filtered = filtered.filter((d) => {
+          const t = new Date(d.completed_at || d.created_at).getTime();
+          return nowMs - t <= rangeMs;
+        });
+      }
+    }
+
+    return filtered;
+  }, [history, historyFilter, dateRange]);
 
   if (!ready) {
     return (
       <main className="flex min-h-screen items-center justify-center">
-        <div className="text-text-muted text-sm tracking-wider uppercase">
+        <div className="text-xs uppercase tracking-widest text-text-faded">
           Loading...
         </div>
       </main>
@@ -76,197 +170,408 @@ export default function Dashboard() {
   }
 
   if (!authenticated) {
-    return null;
+    return (
+      <main className="relative min-h-screen">
+        <Nav />
+        <div className="mx-auto max-w-2xl px-6 py-32 text-center md:px-8">
+          <h1 className="mb-4 text-4xl font-bold tracking-tight">
+            Sign in to view your dashboard
+          </h1>
+          <button
+            onClick={login}
+            className="bg-lime px-6 py-3 text-sm font-medium text-bg transition-all hover:opacity-90"
+          >
+            Sign in
+          </button>
+        </div>
+      </main>
+    );
   }
 
-  const displayName =
-    user?.email?.address ||
-    user?.google?.email ||
-    user?.telegram?.username ||
-    "Anonymous";
-
-  const activeDeals = deals.filter((d) =>
-    ["created", "accepted", "funded", "submitted"].includes(d.state)
-  ).length;
-
-  const pendingAction = deals.filter((d) => {
-    const isWorker = d.worker_wallet === walletAddress;
-    const isClient = d.client_wallet === walletAddress;
-    if (isClient && (d.state === "created" || d.state === "accepted" || d.state === "submitted")) return true;
-    if (isWorker && d.state === "funded") return true;
-    return false;
-  }).length;
-
-  const totalLocked = deals
-    .filter((d) => ["funded", "submitted"].includes(d.state))
-    .reduce((sum, d) => sum + d.amount_lamports, 0);
-
-  const totalEarned = deals
-    .filter((d) => d.state === "completed" && d.worker_wallet === walletAddress)
-    .reduce((sum, d) => sum + d.amount_lamports, 0);
+  if (!connected || !walletAddress) {
+    return (
+      <main className="relative min-h-screen">
+        <Nav />
+        <div className="mx-auto max-w-2xl px-6 py-32 text-center md:px-8">
+          <div className="mb-4 text-xs uppercase tracking-widest text-lime">
+            // CONNECT WALLET
+          </div>
+          <h1 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl">
+            Connect your Solana wallet
+          </h1>
+          <p className="mb-8 text-text-muted">
+            Zinch queries deals by your connected wallet. Connect Phantom to see
+            deals where you&apos;re a worker or client.
+          </p>
+          <div className="inline-block">
+            <WalletMultiButton
+              style={{
+                backgroundColor: "#C4FF3E",
+                color: "#0A0A0A",
+                borderRadius: 0,
+                padding: "0.75rem 1.5rem",
+                fontSize: "0.875rem",
+                fontWeight: 500,
+                height: "auto",
+                fontFamily: "inherit",
+              }}
+            />
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="relative min-h-screen">
       <Nav />
 
-      <div className="mx-auto max-w-7xl px-6 pb-24 pt-32 md:px-8 md:pt-40">
-        <div className="mb-12 flex flex-wrap items-end justify-between gap-6">
+      <div className="mx-auto max-w-6xl px-6 pb-24 pt-32 md:px-8 md:pt-40">
+        <div className="mb-10 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <div className="mb-3 text-xs uppercase tracking-widest text-lime">
+            <div className="mb-2 text-xs uppercase tracking-widest text-text-faded">
               // DASHBOARD
             </div>
-            <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
+            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
               Welcome back.
             </h1>
-            <p className="mt-3 text-text-muted">
-              Signed in as <span className="text-text">{displayName}</span>
-            </p>
+            <div className="mt-2 text-sm text-text-muted">
+              <span className="font-mono text-xs">
+                {walletAddress.slice(0, 6)}...{walletAddress.slice(-6)}
+              </span>
+              {user?.email?.address && <span> · {user.email.address}</span>}
+            </div>
           </div>
 
-          
-          <a  href="/new"
-            className="inline-block bg-lime px-7 py-4 text-sm font-medium tracking-tight text-bg transition-all hover:opacity-90"
+          <Link
+            href="/new"
+            className="inline-flex items-center gap-2 bg-lime px-5 py-3 text-sm font-medium text-bg transition-all hover:opacity-90"
           >
             + Create a deal
-          </a>
+          </Link>
         </div>
 
-        <div className="mb-12 grid grid-cols-2 gap-px border border-border bg-border md:grid-cols-4">
-          {[
-            { label: "Active deals", value: activeDeals.toString() },
-            { label: "Pending action", value: pendingAction.toString() },
-            { label: "Total locked", value: `${(totalLocked / 1e9).toFixed(3)} SOL` },
-            { label: "Total earned", value: `${(totalEarned / 1e9).toFixed(3)} SOL` },
-          ].map((stat) => (
-            <div key={stat.label} className="bg-bg p-6 md:p-8">
-              <div className="mb-2 text-xs uppercase tracking-widest text-text-faded">
-                {stat.label}
-              </div>
-              <div className="text-2xl font-bold tracking-tight tabular-nums md:text-3xl">
-                {stat.value}
-              </div>
-            </div>
-          ))}
+        <div className="mb-10 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <StatCard
+            label="Total locked"
+            value={`${(totalLocked / 1e9).toFixed(4)} SOL`}
+            hint="Currently in escrow"
+          />
+          <StatCard
+            label="Total earned"
+            value={`${(totalEarned / 1e9).toFixed(4)} SOL`}
+            hint="Lifetime worker earnings"
+          />
+          <StatCard
+            label="Active deals"
+            value={String(active.length + pendingAction.length)}
+            hint="Not yet complete"
+          />
+          <StatCard
+            label="Completed"
+            value={String(history.filter((d) => d.state === "completed").length)}
+            hint="All-time"
+          />
         </div>
 
-        {dealsLoading ? (
-          <div className="border border-border p-12 text-center">
-            <div className="text-text-muted text-sm uppercase tracking-widest">
-              Loading deals...
-            </div>
-          </div>
-        ) : deals.length === 0 ? (
-          <div className="border border-border p-12 text-center md:p-20">
-            <div className="mx-auto mb-6 flex h-12 w-12 items-center justify-center border border-lime bg-lime/10">
-              <svg
-                className="h-5 w-5 text-lime"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-            </div>
-            <h2 className="mb-3 text-2xl font-medium tracking-tight md:text-3xl">
-              Nothing here yet.
-            </h2>
-            <p className="mx-auto mb-8 max-w-md text-text-muted">
-              Your first Zinch deal starts with a link. Create one, share it,
-              lock funds in escrow.
-            </p>
-            
-          <a    href="/new"
-              className="inline-block bg-lime px-7 py-4 text-sm font-medium tracking-tight text-bg transition-all hover:opacity-90"
-            >
-              Create your first deal
-            </a>
-          </div>
-        ) : (
-          <div>
-            <div className="mb-4 text-xs uppercase tracking-widest text-text-faded">
-              Your deals
-            </div>
-            <div className="border border-border">
-              {deals.map((deal, idx) => {
-                const isWorker = deal.worker_wallet === walletAddress;
-                const stateInfo = stateLabels[deal.state] || stateLabels.created;
-                return (
-                  
-                 <a   key={deal.deal_id}
-                    href={`/d/${deal.deal_id}`}
-                    className={`block p-6 transition-colors hover:bg-surface ${
-                      idx !== deals.length - 1 ? "border-b border-border" : ""
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="mb-2 flex items-center gap-3">
-                          <span
-                            className={`inline-flex items-center gap-1.5 border border-lime/30 bg-lime/10 px-2 py-0.5 text-xs uppercase tracking-wider ${stateInfo.color}`}
-                          >
-                            {stateInfo.label}
-                          </span>
-                          <span className="text-xs text-text-faded">
-                            {isWorker ? "You're the worker" : "You're the client"}
-                          </span>
-                        </div>
-                        <div className="mb-1 font-medium text-text truncate">
-                          {deal.title}
-                        </div>
-                        <div className="text-xs text-text-faded">
-                          Deal #{deal.deal_id.slice(0, 8).toUpperCase()} ·{" "}
-                          {new Date(deal.created_at).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-lg font-bold tabular-nums text-lime">
-                          {(deal.amount_lamports / 1e9).toFixed(4)}
-                        </div>
-                        <div className="text-xs text-text-faded">
-                          {deal.currency}
-                        </div>
-                      </div>
-                    </div>
-                  </a>
-                );
-              })}
-            </div>
+        {loading && (
+          <div className="mb-10 space-y-2">
+            <ShimmerRow />
+            <ShimmerRow />
+            <ShimmerRow />
           </div>
         )}
 
-        <div className="mt-12 border border-border p-6 md:p-8">
+        {!loading && pendingAction.length > 0 && (
+          <section className="mb-10">
+            <div className="mb-4 flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-lime" />
+              <h2 className="text-sm uppercase tracking-widest text-lime">
+                Pending your action ({pendingAction.length})
+              </h2>
+            </div>
+            <div className="space-y-2">
+              {pendingAction.map((deal) => (
+                <DealRow
+                  key={deal.deal_id}
+                  deal={deal}
+                  walletAddress={walletAddress}
+                  now={now}
+                  highlight
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {!loading && active.length > 0 && (
+          <section className="mb-10">
+            <h2 className="mb-4 text-sm uppercase tracking-widest text-text-faded">
+              Active ({active.length})
+            </h2>
+            <div className="space-y-2">
+              {active.map((deal) => (
+                <DealRow
+                  key={deal.deal_id}
+                  deal={deal}
+                  walletAddress={walletAddress}
+                  now={now}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {!loading && (
+          <section>
+            <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <h2 className="text-sm uppercase tracking-widest text-text-faded">
+                History ({filteredHistory.length})
+              </h2>
+
+              <div className="flex flex-wrap gap-2">
+                <select
+                  value={historyFilter}
+                  onChange={(e) => setHistoryFilter(e.target.value)}
+                  className="border border-border bg-bg px-3 py-1.5 text-xs text-text focus:border-lime focus:outline-none"
+                >
+                  <option value="all">All states</option>
+                  <option value="completed">Completed</option>
+                  <option value="refunded">Refunded</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="expired">Expired</option>
+                </select>
+                <select
+                  value={dateRange}
+                  onChange={(e) => setDateRange(e.target.value)}
+                  className="border border-border bg-bg px-3 py-1.5 text-xs text-text focus:border-lime focus:outline-none"
+                >
+                  <option value="all">All time</option>
+                  <option value="7d">Last 7 days</option>
+                  <option value="30d">Last 30 days</option>
+                  <option value="90d">Last 90 days</option>
+                </select>
+              </div>
+            </div>
+
+            {filteredHistory.length === 0 ? (
+              <div className="border border-border p-8 text-center text-sm text-text-muted">
+                No deals match your filters.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredHistory.map((deal) => (
+                  <DealRow
+                    key={deal.deal_id}
+                    deal={deal}
+                    walletAddress={walletAddress}
+                    now={now}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {!loading &&
+          pendingAction.length === 0 &&
+          active.length === 0 &&
+          history.length === 0 && (
+            <div className="border border-border p-12 text-center">
+              <div className="mb-2 text-xs uppercase tracking-widest text-text-faded">
+                // EMPTY
+              </div>
+              <h3 className="mb-4 text-xl font-bold">No deals yet</h3>
+              <p className="mb-6 text-sm text-text-muted">
+                Create your first deal to get started.
+              </p>
+              <Link
+                href="/new"
+                className="inline-flex items-center gap-2 bg-lime px-5 py-3 text-sm font-medium text-bg transition-all hover:opacity-90"
+              >
+                Create a deal
+              </Link>
+            </div>
+          )}
+
+        <div className="mt-16 border-t border-border pt-8">
           <div className="mb-4 text-xs uppercase tracking-widest text-text-faded">
             Account
           </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
             <div>
               <div className="mb-1 text-xs text-text-faded">Signed in as</div>
-              <div className="text-sm text-text">{displayName}</div>
+              <div className="text-text">
+                {user?.email?.address || user?.google?.email || "—"}
+              </div>
             </div>
             <div>
               <div className="mb-1 text-xs text-text-faded">Solana wallet</div>
-              <div className="mb-2 font-mono text-sm text-text break-all">
-                {walletAddress || "No wallet"}
+              <div className="break-all font-mono text-xs text-text">
+                {walletAddress}
               </div>
-              {walletAddress && (
-                <button
-                  onClick={() => navigator.clipboard.writeText(walletAddress)}
-                  className="text-xs text-lime hover:opacity-80"
-                >
-                  Copy address
-                </button>
-              )}
             </div>
           </div>
           <button
-            onClick={logout}
-            className="mt-6 border border-border bg-transparent px-5 py-3 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text"
+            onClick={() => logout()}
+            className="mt-6 border border-border px-4 py-2 text-xs text-text-muted transition-all hover:border-border-hover hover:text-text"
           >
             Sign out
           </button>
         </div>
       </div>
     </main>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+}) {
+  return (
+    <div className="border border-border bg-surface p-4">
+      <div className="mb-1 text-xs uppercase tracking-wider text-text-faded">
+        {label}
+      </div>
+      <div className="text-xl font-bold tracking-tight tabular-nums text-text md:text-2xl">
+        {value}
+      </div>
+      {hint && <div className="mt-1 text-xs text-text-faded">{hint}</div>}
+    </div>
+  );
+}
+
+function DealRow({
+  deal,
+  walletAddress,
+  now,
+  highlight,
+}: {
+  deal: Deal;
+  walletAddress: string;
+  now: number;
+  highlight?: boolean;
+}) {
+  const isWorker = deal.worker_wallet === walletAddress;
+  const role = isWorker ? "Worker" : "Client";
+
+  const stateLabels: Record<string, string> = {
+    created: "Awaiting acceptance",
+    accepted: "Awaiting funding",
+    funded: "In progress",
+    submitted: "Awaiting approval",
+    completed: "Completed",
+    refunded: "Refunded",
+    cancelled: "Cancelled",
+    disputed: "Disputed",
+    expired: "Expired",
+  };
+
+  const stateColors: Record<string, string> = {
+    created: "text-lime",
+    accepted: "text-lime",
+    funded: "text-lime",
+    submitted: "text-lime",
+    completed: "text-text",
+    refunded: "text-text-muted",
+    cancelled: "text-text-muted",
+    disputed: "text-red-400",
+    expired: "text-text-muted",
+  };
+
+  let countdown: string | null = null;
+  if (deal.state === "submitted" && deal.submitted_at) {
+    const submittedAt = new Date(deal.submitted_at).getTime();
+    const expiresAt = submittedAt + deal.auto_release_seconds * 1000;
+    const remaining = expiresAt - now;
+    if (remaining > 0) {
+      const days = Math.floor(remaining / 86400000);
+      const hours = Math.floor((remaining % 86400000) / 3600000);
+      const minutes = Math.floor((remaining % 3600000) / 60000);
+      const seconds = Math.floor((remaining % 60000) / 1000);
+      const parts = [];
+      if (days > 0) parts.push(`${days}d`);
+      if (days > 0 || hours > 0) parts.push(`${hours}h`);
+      parts.push(`${minutes}m`);
+      parts.push(`${seconds}s`);
+      countdown = parts.join(" ");
+    } else {
+      countdown = "Auto-releasing...";
+    }
+  }
+
+  const latestTx =
+    deal.resolution_tx_signature ||
+    deal.release_tx_signature ||
+    deal.fund_tx_signature ||
+    deal.create_tx_signature;
+
+  return (
+    <div
+      className={`border p-4 transition-all hover:border-border-hover ${
+        highlight
+          ? "border-lime/50 bg-lime/5"
+          : deal.state === "disputed"
+          ? "border-red-500/30 bg-red-500/5"
+          : "border-border bg-surface"
+      }`}
+    >
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <Link href={`/d/${deal.deal_id}`} className="flex-1 min-w-0 block">
+          <div className="mb-1 flex items-center gap-2 flex-wrap">
+            <span
+              className={`text-xs uppercase tracking-widest ${
+                stateColors[deal.state] || "text-text-muted"
+              }`}
+            >
+              {stateLabels[deal.state] || deal.state}
+            </span>
+            <span className="text-xs text-text-faded">·</span>
+            <span className="text-xs text-text-faded">{role}</span>
+            {countdown && (
+              <>
+                <span className="text-xs text-text-faded">·</span>
+                <span className="font-mono text-xs tabular-nums text-lime">
+                  {countdown}
+                </span>
+              </>
+            )}
+          </div>
+          <div className="mb-1 truncate text-sm font-medium text-text">
+            {deal.title}
+          </div>
+          <div className="text-xs text-text-faded">
+            #{deal.deal_id.slice(0, 8).toUpperCase()} ·{" "}
+            {new Date(deal.created_at).toLocaleDateString()}
+          </div>
+        </Link>
+
+        <div className="flex items-center gap-4">
+          <Link href={`/d/${deal.deal_id}`} className="text-right block">
+            <div className="text-lg font-bold tabular-nums text-lime">
+              {(deal.amount_lamports / 1e9).toFixed(4)}
+            </div>
+            <div className="text-xs text-text-faded">SOL</div>
+          </Link>
+
+          {latestTx && (
+            
+           <a   href={`https://explorer.solana.com/tx/${latestTx}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="border border-border px-2 py-1 text-xs text-text-muted transition-all hover:border-border-hover hover:text-text"
+              title="View on Solana Explorer"
+            >
+              ↗
+            </a>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

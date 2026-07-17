@@ -7,6 +7,9 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { PublicKey, Transaction } from "@solana/web3.js";
 import Nav from "@/components/landing/Nav";
+import Link from "next/link";
+import { PageLoader, ButtonSpinner } from "@/components/ui/Spinner";
+import { useToast } from "@/components/ui/Toast";
 import {
   buildAcceptDealInstruction,
   buildFundDealInstruction,
@@ -37,11 +40,47 @@ type Deal = {
   auto_release_seconds: number;
   acceptance_deadline: string;
   created_at: string;
+  submitted_at: string | null;
   create_tx_signature: string | null;
   proposed_worker_amount: number | null;
   proposed_client_amount: number | null;
   proposed_by: string | null;
 };
+
+function humanizeError(raw: string, fallback: string): string {
+  if (!raw) return fallback;
+  if (raw.includes("AccountDidNotDeserialize"))
+    return "This deal was created before a smart contract upgrade and can no longer be used. Please create a new deal.";
+  if (raw.includes("InvalidState"))
+    return "This action isn't allowed at this stage of the deal.";
+  if (raw.includes("UnauthorizedSigner"))
+    return "You're not authorized to perform this action on this deal.";
+  if (raw.includes("DealExpired"))
+    return "This deal's acceptance deadline has passed.";
+  if (raw.includes("AutoReleaseNotReady"))
+    return "The auto-release timer hasn't expired yet.";
+  if (raw.includes("InvalidSplit"))
+    return "The proposed split doesn't add up to the deal amount.";
+  if (raw.includes("InvalidAutoReleaseWindow"))
+    return "Auto-release must be between 30 minutes and 30 days.";
+  if (raw.includes("InvalidAmount"))
+    return "Deal amount must be greater than 0.";
+  if (raw.includes("InvalidDeadline"))
+    return "The acceptance deadline must be in the future.";
+  if (
+    raw.includes("User rejected") ||
+    raw.includes("rejected the request") ||
+    raw.includes("Approval Denied")
+  )
+    return "You cancelled the transaction.";
+  if (
+    raw.includes("insufficient funds") ||
+    raw.includes("insufficient lamports")
+  )
+    return "Your wallet doesn't have enough SOL for this transaction.";
+  if (raw.length > 200) return fallback;
+  return raw;
+}
 
 export default function DealPage({
   params,
@@ -51,15 +90,16 @@ export default function DealPage({
   const { id } = use(params);
   const { authenticated, login } = usePrivy();
   const { publicKey, sendTransaction, connected } = useWallet();
+  const { showToast } = useToast();
   const [deal, setDeal] = useState<Deal | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Dispute state
   const [showProposeUI, setShowProposeUI] = useState(false);
   const [workerPercent, setWorkerPercent] = useState(50);
+  const [now, setNow] = useState(Date.now());
 
   const currentUserWallet = publicKey?.toBase58() || null;
 
@@ -83,6 +123,11 @@ export default function DealPage({
     fetchDeal();
   }, [id]);
 
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
   const executeAction = async (
     action:
       | "accept"
@@ -96,7 +141,7 @@ export default function DealPage({
   ) => {
     if (!deal) return;
     if (!connected || !publicKey) {
-      alert("Please connect your Phantom wallet first.");
+      showToast("Please connect your Phantom wallet first.", "error");
       return;
     }
 
@@ -116,61 +161,59 @@ export default function DealPage({
       let txSignature = "";
 
       if (action === "accept") {
-        const ix = await buildAcceptDealInstruction({
-          signerPubkey: publicKey,
-          dealPDA,
-        });
-        transaction.add(ix);
+        transaction.add(
+          await buildAcceptDealInstruction({ signerPubkey: publicKey, dealPDA })
+        );
         newState = "accepted";
       } else if (action === "fund") {
-        const ix = await buildFundDealInstruction({
-          clientPubkey: publicKey,
-          dealPDA,
-        });
-        transaction.add(ix);
+        transaction.add(
+          await buildFundDealInstruction({ clientPubkey: publicKey, dealPDA })
+        );
         newState = "funded";
       } else if (action === "submit") {
-        const ix = await buildSubmitWorkInstruction({
-          workerPubkey: publicKey,
-          dealPDA,
-        });
-        transaction.add(ix);
+        transaction.add(
+          await buildSubmitWorkInstruction({ workerPubkey: publicKey, dealPDA })
+        );
         newState = "submitted";
       } else if (action === "approve") {
-        const ix = await buildApproveAndReleaseInstruction({
-          clientPubkey: publicKey,
-          dealPDA,
-          workerPubkey: new PublicKey(deal.worker_wallet),
-          feeRecipient: FEE_RECIPIENT,
-        });
-        transaction.add(ix);
+        transaction.add(
+          await buildApproveAndReleaseInstruction({
+            clientPubkey: publicKey,
+            dealPDA,
+            workerPubkey: new PublicKey(deal.worker_wallet),
+            feeRecipient: FEE_RECIPIENT,
+          })
+        );
         newState = "completed";
       } else if (action === "refund") {
-        const ix = await buildRefundDealInstruction({
-          workerPubkey: publicKey,
-          dealPDA,
-          clientPubkey: new PublicKey(deal.client_wallet),
-        });
-        transaction.add(ix);
+        transaction.add(
+          await buildRefundDealInstruction({
+            workerPubkey: publicKey,
+            dealPDA,
+            clientPubkey: new PublicKey(deal.client_wallet),
+          })
+        );
         newState = "refunded";
       } else if (action === "cancel") {
         newState = "cancelled";
       } else if (action === "dispute") {
-        const ix = await buildOpenDisputeInstruction({
-          signerPubkey: publicKey,
-          dealPDA,
-        });
-        transaction.add(ix);
+        transaction.add(
+          await buildOpenDisputeInstruction({
+            signerPubkey: publicKey,
+            dealPDA,
+          })
+        );
         newState = "disputed";
       } else if (action === "acceptResolution") {
-        const ix = await buildAcceptResolutionInstruction({
-          signerPubkey: publicKey,
-          dealPDA,
-          workerPubkey: new PublicKey(deal.worker_wallet),
-          clientPubkey: new PublicKey(deal.client_wallet),
-          feeRecipient: FEE_RECIPIENT,
-        });
-        transaction.add(ix);
+        transaction.add(
+          await buildAcceptResolutionInstruction({
+            signerPubkey: publicKey,
+            dealPDA,
+            workerPubkey: new PublicKey(deal.worker_wallet),
+            clientPubkey: new PublicKey(deal.client_wallet),
+            feeRecipient: FEE_RECIPIENT,
+          })
+        );
         newState = "completed";
       }
 
@@ -179,17 +222,14 @@ export default function DealPage({
         if (simResult.value.err) {
           console.error("Simulation failed:", simResult.value.err);
           console.error("Logs:", simResult.value.logs);
-          throw new Error(
-            "Transaction would fail: " +
-              JSON.stringify(simResult.value.err) +
-              "\n" +
-              (simResult.value.logs?.join("\n") || "")
-          );
+          const logs = simResult.value.logs?.join("\n") || "";
+          throw new Error(logs || JSON.stringify(simResult.value.err));
         }
 
         txSignature = await sendTransaction(transaction, connection);
         await connection.confirmTransaction(txSignature, "confirmed");
         console.log(`${action} tx confirmed:`, txSignature);
+        showToast(`${action} succeeded on-chain`, "success");
       }
 
       const res = await fetch(`/api/deal/${id}/state`, {
@@ -210,7 +250,10 @@ export default function DealPage({
 
       if (!res.ok) {
         console.error("DB update failed:", responseText);
-        alert("DB update failed: " + (responseData.error || "Unknown"));
+        showToast(
+          "DB update failed: " + (responseData.error || "Unknown"),
+          "error"
+        );
       } else if (responseData.deal) {
         setDeal(responseData.deal);
       } else {
@@ -222,7 +265,8 @@ export default function DealPage({
       }
     } catch (err: any) {
       console.error(`${action} error:`, err);
-      alert(err.message || `${action} failed. See console.`);
+      const friendly = humanizeError(err.message || "", `${action} failed`);
+      showToast(friendly, "error");
     } finally {
       setActionLoading(false);
     }
@@ -231,7 +275,9 @@ export default function DealPage({
   const proposeResolution = async () => {
     if (!deal || !publicKey || !connected) return;
 
-    const workerAmount = Math.floor((deal.amount_lamports * workerPercent) / 100);
+    const workerAmount = Math.floor(
+      (deal.amount_lamports * workerPercent) / 100
+    );
     const clientAmount = deal.amount_lamports - workerAmount;
 
     setActionLoading(true);
@@ -257,18 +303,14 @@ export default function DealPage({
       const sim = await connection.simulateTransaction(transaction);
       if (sim.value.err) {
         console.error("Sim failed:", sim.value.err, sim.value.logs);
-        throw new Error(
-          "Failed: " +
-            JSON.stringify(sim.value.err) +
-            "\n" +
-            (sim.value.logs?.join("\n") || "")
-        );
+        const logs = sim.value.logs?.join("\n") || "";
+        throw new Error(logs || JSON.stringify(sim.value.err));
       }
 
       const signature = await sendTransaction(transaction, connection);
       await connection.confirmTransaction(signature, "confirmed");
+      showToast("Resolution proposed on-chain", "success");
 
-      // Update DB with proposed amounts (state stays disputed)
       const res = await fetch(`/api/deal/${id}/state`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -292,7 +334,11 @@ export default function DealPage({
       setShowProposeUI(false);
     } catch (err: any) {
       console.error("Propose error:", err);
-      alert(err.message || "Failed to propose resolution");
+      const friendly = humanizeError(
+        err.message || "",
+        "Failed to propose resolution"
+      );
+      showToast(friendly, "error");
     } finally {
       setActionLoading(false);
     }
@@ -307,9 +353,10 @@ export default function DealPage({
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
-        <div className="text-text-muted text-sm tracking-wider uppercase">
-          Loading deal...
+      <main className="relative min-h-screen">
+        <Nav />
+        <div className="mx-auto max-w-2xl px-6 pb-24 pt-32 md:px-8 md:pt-40">
+          <PageLoader label="Loading deal" />
         </div>
       </main>
     );
@@ -355,15 +402,13 @@ export default function DealPage({
   const feeAmount = Math.floor((deal.amount_lamports * 150) / 10_000);
   const totalLock = deal.amount_lamports + feeAmount;
 
-  // Dispute logic
   const hasProposal =
     deal.state === "disputed" &&
     deal.proposed_by &&
     deal.proposed_by !== "" &&
     (deal.proposed_worker_amount || 0) + (deal.proposed_client_amount || 0) > 0;
 
-  const isProposer =
-    hasProposal && currentUserWallet === deal.proposed_by;
+  const isProposer = hasProposal && currentUserWallet === deal.proposed_by;
   const canAcceptProposal = hasProposal && isParty && !isProposer;
 
   const presetSplits = [
@@ -385,10 +430,16 @@ export default function DealPage({
           </div>
           <div
             className={`inline-flex items-center gap-1.5 border ${
-              deal.state === "disputed" ? "border-red-500/30 bg-red-500/10" : "border-lime/30 bg-lime/10"
+              deal.state === "disputed"
+                ? "border-red-500/30 bg-red-500/10"
+                : "border-lime/30 bg-lime/10"
             } px-2.5 py-1 text-xs uppercase tracking-wider ${stateInfo.color}`}
           >
-            <span className={`h-1 w-1 rounded-full ${deal.state === "disputed" ? "bg-red-500" : "bg-lime"}`} />
+            <span
+              className={`h-1 w-1 rounded-full ${
+                deal.state === "disputed" ? "bg-red-500" : "bg-lime"
+              }`}
+            />
             {stateInfo.label}
           </div>
         </div>
@@ -431,12 +482,34 @@ export default function DealPage({
             </div>
             <div>
               <div className="mb-1.5 text-xs uppercase tracking-wider text-text-faded">
-                Auto-release
+                {deal.state === "submitted" ? "Auto-release in" : "Auto-release"}
               </div>
-              <div className="text-sm font-medium text-text">
-                {deal.auto_release_seconds >= 3600
-                  ? `${(deal.auto_release_seconds / 3600).toFixed(1)} hours`
-                  : `${Math.floor(deal.auto_release_seconds / 60)} minutes`}
+              <div className="text-sm font-medium text-text tabular-nums">
+                {(() => {
+                  if (deal.state === "submitted" && deal.submitted_at) {
+                    const expires =
+                      new Date(deal.submitted_at).getTime() +
+                      deal.auto_release_seconds * 1000;
+                    const remaining = expires - now;
+                    if (remaining <= 0)
+                      return (
+                        <span className="text-lime">Ready to auto-release</span>
+                      );
+                    const days = Math.floor(remaining / 86400000);
+                    const hours = Math.floor((remaining % 86400000) / 3600000);
+                    const minutes = Math.floor((remaining % 3600000) / 60000);
+                    const seconds = Math.floor((remaining % 60000) / 1000);
+                    const parts: string[] = [];
+                    if (days > 0) parts.push(`${days}d`);
+                    if (days > 0 || hours > 0) parts.push(`${hours}h`);
+                    parts.push(`${minutes}m`);
+                    parts.push(`${seconds}s`);
+                    return <span className="text-lime">{parts.join(" ")}</span>;
+                  }
+                  return deal.auto_release_seconds >= 3600
+                    ? `${(deal.auto_release_seconds / 3600).toFixed(1)} hours`
+                    : `${Math.floor(deal.auto_release_seconds / 60)} minutes`;
+                })()}
               </div>
             </div>
             <div>
@@ -458,7 +531,6 @@ export default function DealPage({
           </div>
         </div>
 
-        {/* ========== DISPUTE VIEW ========== */}
         {deal.state === "disputed" && (
           <div className="mb-6 border border-red-500/30 bg-red-500/5 p-6">
             <div className="mb-4 flex items-center gap-2">
@@ -491,7 +563,6 @@ export default function DealPage({
                       Choose a split
                     </div>
 
-                    {/* Preset buttons */}
                     <div className="mb-5 grid grid-cols-5 gap-2">
                       {presetSplits.map((preset) => (
                         <button
@@ -508,7 +579,6 @@ export default function DealPage({
                       ))}
                     </div>
 
-                    {/* Slider */}
                     <div className="mb-5">
                       <input
                         type="range"
@@ -523,7 +593,6 @@ export default function DealPage({
                       />
                     </div>
 
-                    {/* Split preview */}
                     <div className="mb-5 grid grid-cols-2 gap-2 border border-border bg-bg p-4">
                       <div>
                         <div className="mb-1 text-xs uppercase tracking-wider text-text-faded">
@@ -533,7 +602,12 @@ export default function DealPage({
                           {workerPercent}%
                         </div>
                         <div className="text-xs text-text-muted">
-                          {((deal.amount_lamports * workerPercent) / 100 / 1e9).toFixed(4)} SOL
+                          {(
+                            (deal.amount_lamports * workerPercent) /
+                            100 /
+                            1e9
+                          ).toFixed(4)}{" "}
+                          SOL
                         </div>
                       </div>
                       <div className="text-right">
@@ -544,7 +618,12 @@ export default function DealPage({
                           {100 - workerPercent}%
                         </div>
                         <div className="text-xs text-text-muted">
-                          {((deal.amount_lamports * (100 - workerPercent)) / 100 / 1e9).toFixed(4)} SOL
+                          {(
+                            (deal.amount_lamports * (100 - workerPercent)) /
+                            100 /
+                            1e9
+                          ).toFixed(4)}{" "}
+                          SOL
                         </div>
                       </div>
                     </div>
@@ -555,7 +634,7 @@ export default function DealPage({
                         disabled={actionLoading}
                         className="flex-1 bg-lime py-3 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
                       >
-                        {actionLoading ? "Signing..." : "Submit proposal"}
+                        {actionLoading ? <ButtonSpinner label="Signing" /> : "Submit proposal"}
                       </button>
                       <button
                         onClick={() => setShowProposeUI(false)}
@@ -622,7 +701,7 @@ export default function DealPage({
                       disabled={actionLoading}
                       className="w-full bg-lime py-3.5 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
                     >
-                      {actionLoading ? "Signing..." : "Accept & execute split"}
+                      {actionLoading ? <ButtonSpinner label="Signing" /> : "Accept & execute split"}
                     </button>
                     <button
                       onClick={() => setShowProposeUI(true)}
@@ -667,18 +746,28 @@ export default function DealPage({
                         max="100"
                         step="5"
                         value={workerPercent}
-                        onChange={(e) => setWorkerPercent(parseInt(e.target.value))}
+                        onChange={(e) =>
+                          setWorkerPercent(parseInt(e.target.value))
+                        }
                         className="w-full accent-lime"
                       />
                     </div>
                     <div className="mb-5 grid grid-cols-2 gap-2 border border-border bg-bg p-4">
                       <div>
-                        <div className="mb-1 text-xs text-text-faded">Worker</div>
-                        <div className="text-lg font-bold text-lime">{workerPercent}%</div>
+                        <div className="mb-1 text-xs text-text-faded">
+                          Worker
+                        </div>
+                        <div className="text-lg font-bold text-lime">
+                          {workerPercent}%
+                        </div>
                       </div>
                       <div className="text-right">
-                        <div className="mb-1 text-xs text-text-faded">Client</div>
-                        <div className="text-lg font-bold text-lime">{100 - workerPercent}%</div>
+                        <div className="mb-1 text-xs text-text-faded">
+                          Client
+                        </div>
+                        <div className="text-lg font-bold text-lime">
+                          {100 - workerPercent}%
+                        </div>
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -687,7 +776,7 @@ export default function DealPage({
                         disabled={actionLoading}
                         className="flex-1 bg-lime py-3 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
                       >
-                        {actionLoading ? "Signing..." : "Submit counter proposal"}
+                        {actionLoading ? <ButtonSpinner label="Signing" /> : "Submit counter proposal"}
                       </button>
                       <button
                         onClick={() => setShowProposeUI(false)}
@@ -704,7 +793,6 @@ export default function DealPage({
           </div>
         )}
 
-        {/* ========== NORMAL ACTION BUTTONS ========== */}
         {!authenticated && (
           <div className="mb-6 border border-border p-6 text-center">
             <p className="mb-4 text-sm text-text-muted">
@@ -761,7 +849,7 @@ export default function DealPage({
               disabled={actionLoading}
               className="mb-2 w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
             >
-              {actionLoading ? "Signing on-chain..." : "Accept this deal"}
+              {actionLoading ? <ButtonSpinner label="Signing" /> : "Accept this deal"}
             </button>
             <button
               onClick={() => executeAction("cancel")}
@@ -781,7 +869,7 @@ export default function DealPage({
               className="w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
             >
               {actionLoading
-                ? "Funding on-chain..."
+                ? <ButtonSpinner label="Funding" />
                 : `Fund deal (${(totalLock / 1e9).toFixed(4)} SOL)`}
             </button>
           </div>
@@ -794,7 +882,7 @@ export default function DealPage({
               disabled={actionLoading}
               className="w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
             >
-              {actionLoading ? "Submitting..." : "Submit work as delivered"}
+              {actionLoading ? <ButtonSpinner label="Submitting" /> : "Submit work as delivered"}
             </button>
             <button
               onClick={() => executeAction("dispute")}
@@ -825,7 +913,7 @@ export default function DealPage({
               disabled={actionLoading}
               className="w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
             >
-              {actionLoading ? "Releasing..." : "Approve & release funds"}
+              {actionLoading ? <ButtonSpinner label="Releasing" /> : "Approve & release funds"}
             </button>
             <button
               onClick={() => executeAction("dispute")}
@@ -849,17 +937,18 @@ export default function DealPage({
           </div>
         )}
 
-        {authenticated && connected && isWorker && (deal.state === "funded" || deal.state === "submitted") && (
-          <div className="mb-6">
-            <button
-              onClick={() => executeAction("refund")}
-              disabled={actionLoading}
-              className="w-full border border-border py-3 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
-            >
-              {actionLoading ? "Refunding..." : "Refund client (full amount)"}
-            </button>
-          </div>
-        )}
+        {authenticated && connected && isWorker &&
+          (deal.state === "funded" || deal.state === "submitted") && (
+            <div className="mb-6">
+              <button
+                onClick={() => executeAction("refund")}
+                disabled={actionLoading}
+                className="w-full border border-border py-3 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
+              >
+                {actionLoading ? <ButtonSpinner label="Refunding" /> : "Refund client (full amount)"}
+              </button>
+            </div>
+          )}
 
         <div className="mb-6 border border-border bg-surface p-6">
           <div className="mb-3 text-xs uppercase tracking-widest text-text-faded">
@@ -878,6 +967,25 @@ export default function DealPage({
             </button>
           </div>
         </div>
+
+        {(deal.state === "completed" ||
+          deal.state === "refunded" ||
+          deal.state === "cancelled") && (
+          <div className="mb-6 border border-lime/30 bg-lime/5 p-6">
+            <div className="mb-3 text-xs uppercase tracking-widest text-lime">
+              // RECEIPT AVAILABLE
+            </div>
+            <p className="mb-4 text-sm text-text-muted">
+              This deal is complete. Share the public receipt as proof.
+            </p>
+            <Link
+              href={`/r/${id}`}
+              className="inline-flex items-center gap-2 border border-lime bg-lime/10 px-4 py-2.5 text-sm font-medium text-lime transition-all hover:bg-lime/20"
+            >
+              View public receipt →
+            </Link>
+          </div>
+        )}
 
         <div className="border border-border bg-surface p-6">
           <div className="mb-4 text-xs uppercase tracking-widest text-text-faded">

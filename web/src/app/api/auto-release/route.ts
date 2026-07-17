@@ -10,6 +10,15 @@ import {
 
 export async function POST(req: Request) {
   try {
+    // In production, require a secret (from CRON_SECRET env var)
+    const cronSecret = process.env.CRON_SECRET;
+    if (cronSecret) {
+      const authHeader = req.headers.get("authorization");
+      if (authHeader !== `Bearer ${cronSecret}`) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+    }
+    
     // Load the server-side keypair
     const keypairJson = process.env.ZINCH_AUTO_RELEASE_KEYPAIR;
     if (!keypairJson) {

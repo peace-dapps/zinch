@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { sendStateChangeEmail } from "@/lib/email";
 
 const VALID_STATES = [
   "created",
@@ -97,6 +98,53 @@ export async function POST(
 
     if (updateError) {
       return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
+
+    // Fire notification emails (fire-and-forget, never blocks response)
+    if (updated && ["accepted", "funded", "submitted", "completed", "refunded", "disputed"].includes(newState)) {
+      const { data: workerUser } = await supabaseAdmin
+        .from("wallet_emails")
+        .select("email")
+        .eq("wallet_address", updated.worker_wallet)
+        .maybeSingle();
+
+      const { data: clientUser } = await supabaseAdmin
+        .from("wallet_emails")
+        .select("email")
+        .eq("wallet_address", updated.client_wallet)
+        .maybeSingle();
+
+      const notifyList: Array<{ email: string; role: "worker" | "client" }> = [];
+
+      if (newState === "accepted") {
+        if (workerUser?.email) notifyList.push({ email: workerUser.email, role: "worker" });
+        if (clientUser?.email) notifyList.push({ email: clientUser.email, role: "client" });
+      } else if (newState === "funded") {
+        if (workerUser?.email) notifyList.push({ email: workerUser.email, role: "worker" });
+        if (clientUser?.email) notifyList.push({ email: clientUser.email, role: "client" });
+      } else if (newState === "submitted") {
+        if (clientUser?.email) notifyList.push({ email: clientUser.email, role: "client" });
+        if (workerUser?.email) notifyList.push({ email: workerUser.email, role: "worker" });
+      } else if (newState === "completed") {
+        if (workerUser?.email) notifyList.push({ email: workerUser.email, role: "worker" });
+        if (clientUser?.email) notifyList.push({ email: clientUser.email, role: "client" });
+      } else if (newState === "refunded") {
+        if (clientUser?.email) notifyList.push({ email: clientUser.email, role: "client" });
+        if (workerUser?.email) notifyList.push({ email: workerUser.email, role: "worker" });
+      } else if (newState === "disputed") {
+        if (workerUser?.email) notifyList.push({ email: workerUser.email, role: "worker" });
+        if (clientUser?.email) notifyList.push({ email: clientUser.email, role: "client" });
+      }
+
+      for (const target of notifyList) {
+        sendStateChangeEmail(newState as any, {
+          toEmail: target.email,
+          toRole: target.role,
+          dealId: updated.deal_id,
+          dealTitle: updated.title,
+          amountLamports: updated.amount_lamports,
+        }).catch(() => {});
+      }
     }
 
     return NextResponse.json({ deal: updated });

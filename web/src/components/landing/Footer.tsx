@@ -1,21 +1,31 @@
+import Image from "next/image";
+
 export default function Footer() {
   const cols = [
     {
       title: "Product",
       links: [
-        { label: "How it works", href: "#how" },
-        { label: "Pricing", href: "#pricing" },
-        { label: "Security", href: "#" },
-        { label: "Roadmap", href: "#" },
+        { label: "How it works", href: "/#how" },
+        { label: "Pricing", href: "/#pricing" },
+        { label: "Dashboard", href: "/dashboard" },
+        { label: "Create a deal", href: "/new" },
       ],
     },
     {
       title: "Resources",
       links: [
-        { label: "Documentation", href: "#" },
-        { label: "FAQ", href: "#faq" },
-        { label: "Brand kit", href: "#" },
-        { label: "Status", href: "#" },
+        { label: "Documentation", href: "/docs" },
+        { label: "FAQ", href: "/#faq" },
+        { label: "GitHub", href: "https://github.com/peace-dapps/zinch" },
+        { label: "Solana Explorer", href: "https://explorer.solana.com/address/3gm7tTj5meZP1tYjvE49zSzpjMmyywD5wqZ7jxPS7uDP?cluster=devnet" },
+      ],
+    },
+    {
+      title: "Legal",
+      links: [
+        { label: "Terms of Service", href: "/legal/terms" },
+        { label: "Privacy Policy", href: "/legal/privacy" },
+        { label: "Contact", href: "mailto:hello@zinch.app" },
       ],
     },
     {
@@ -23,7 +33,6 @@ export default function Footer() {
       links: [
         { label: "X / Twitter", href: "https://x.com/zinch_app" },
         { label: "Telegram", href: "https://t.me/zinchapp" },
-        { label: "GitHub", href: "#" },
         { label: "Email", href: "mailto:gm@zinch.app" },
       ],
     },
@@ -32,15 +41,16 @@ export default function Footer() {
   return (
     <footer className="border-t border-border">
       <div className="mx-auto max-w-7xl px-6 py-16 md:px-8 md:py-20">
-        <div className="grid grid-cols-1 gap-12 md:grid-cols-4">
-          <div className="md:col-span-1">
+        <div className="grid grid-cols-2 gap-10 md:grid-cols-5">
+          <div className="col-span-2 md:col-span-1">
             <div className="flex items-center gap-2.5">
-              <svg viewBox="0 0 32 32" fill="none" className="h-7 w-7">
-                <path d="M4 4H14L18 12H8L4 4Z" fill="#C4FF3E" />
-                <path d="M8 12H18L14 20H4L8 12Z" fill="#C4FF3E" />
-                <path d="M14 12H24L28 20H18L14 12Z" fill="#C4FF3E" />
-                <path d="M18 20H28L24 28H14L18 20Z" fill="#C4FF3E" />
-              </svg>
+              <Image
+                src="/logo.svg"
+                alt="Zinch"
+                width={38}
+                height={38}
+                className="h-8 w-8"
+              />
               <span className="text-xl font-bold tracking-tight">zinch</span>
             </div>
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-text-muted">
@@ -56,8 +66,10 @@ export default function Footer() {
               <ul className="space-y-3">
                 {col.links.map((link) => (
                   <li key={link.label}>
-                    <a
-                      href={link.href}
+                    
+                    <a  href={link.href}
+                      target={link.href.startsWith("http") ? "_blank" : undefined}
+                      rel={link.href.startsWith("http") ? "noopener noreferrer" : undefined}
                       className="text-sm text-text-muted transition-colors hover:text-text"
                     >
                       {link.label}
