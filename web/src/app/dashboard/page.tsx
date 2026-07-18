@@ -284,11 +284,9 @@ export default function DashboardPage() {
 
         {!loading && pendingAction.length > 0 && (
           <section className="mb-10">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-lime" />
-              <h2 className="text-sm uppercase tracking-widest text-lime">
-                Pending your action ({pendingAction.length})
-              </h2>
+            <div className="mb-4 flex items-baseline gap-2 font-mono text-sm uppercase tracking-widest text-lime">
+              <span>[!]</span>
+              <h2>Pending your action ({pendingAction.length})</h2>
             </div>
             <div className="space-y-2">
               {pendingAction.map((deal) => (
@@ -460,16 +458,16 @@ function DealRow({
   const isWorker = deal.worker_wallet === walletAddress;
   const role = isWorker ? "Worker" : "Client";
 
-  const stateLabels: Record<string, string> = {
-    created: "Awaiting acceptance",
-    accepted: "Awaiting funding",
-    funded: "In progress",
-    submitted: "Awaiting approval",
-    completed: "Completed",
-    refunded: "Refunded",
-    cancelled: "Cancelled",
-    disputed: "Disputed",
-    expired: "Expired",
+  const stateLabels: Record<string, { prefix: string; label: string }> = {
+    created: { prefix: "[01]", label: "AWAITING ACCEPTANCE" },
+    accepted: { prefix: "[02]", label: "AWAITING FUNDING" },
+    funded: { prefix: "[03]", label: "IN PROGRESS" },
+    submitted: { prefix: "[04]", label: "AWAITING APPROVAL" },
+    completed: { prefix: "[✓]", label: "COMPLETED" },
+    refunded: { prefix: "[↩]", label: "REFUNDED" },
+    cancelled: { prefix: "[×]", label: "CANCELLED" },
+    disputed: { prefix: "[!]", label: "DISPUTED" },
+    expired: { prefix: "[×]", label: "EXPIRED" },
   };
 
   const stateColors: Record<string, string> = {
@@ -523,13 +521,12 @@ function DealRow({
     >
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <Link href={`/d/${deal.deal_id}`} className="flex-1 min-w-0 block">
-          <div className="mb-1 flex items-center gap-2 flex-wrap">
-            <span
-              className={`text-xs uppercase tracking-widest ${
-                stateColors[deal.state] || "text-text-muted"
-              }`}
-            >
-              {stateLabels[deal.state] || deal.state}
+          <div className="mb-1 flex items-baseline gap-2 flex-wrap font-mono text-xs uppercase tracking-widest">
+            <span className={stateColors[deal.state] || "text-text-muted"}>
+              {stateLabels[deal.state]?.prefix || "[?]"}
+            </span>
+            <span className={stateColors[deal.state] || "text-text-muted"}>
+              {stateLabels[deal.state]?.label || deal.state}
             </span>
             <span className="text-xs text-text-faded">·</span>
             <span className="text-xs text-text-faded">{role}</span>

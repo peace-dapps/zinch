@@ -3,9 +3,9 @@ export default function CTA() {
     <section className="mx-auto max-w-7xl px-6 py-24 md:px-8 md:py-32">
       <div className="border border-border bg-surface px-8 py-16 md:px-16 md:py-24">
         <div className="mx-auto max-w-3xl text-center">
-          <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-border bg-bg px-3 py-1.5 text-xs tracking-wide text-text-muted">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-lime" />
-            JOIN EARLY
+          <div className="mb-6 flex items-baseline justify-center gap-2 font-mono text-xs uppercase tracking-widest text-lime">
+            <span>[SOON]</span>
+            <span>Recruiting first testers</span>
           </div>
 
           <h2 className="mb-6 text-5xl font-bold leading-tight tracking-tight sm:text-6xl md:text-7xl">

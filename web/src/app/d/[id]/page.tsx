@@ -385,16 +385,16 @@ export default function DealPage({
   const isClient = currentUserWallet === deal.client_wallet;
   const isParty = isWorker || isClient;
 
-  const stateLabels: Record<string, { label: string; color: string }> = {
-    created: { label: "AWAITING ACCEPTANCE", color: "text-lime" },
-    accepted: { label: "AWAITING FUNDING", color: "text-lime" },
-    funded: { label: "IN PROGRESS", color: "text-lime" },
-    submitted: { label: "AWAITING APPROVAL", color: "text-lime" },
-    completed: { label: "COMPLETED", color: "text-lime" },
-    refunded: { label: "REFUNDED", color: "text-text-muted" },
-    cancelled: { label: "CANCELLED", color: "text-text-muted" },
-    disputed: { label: "DISPUTED", color: "text-red-400" },
-    expired: { label: "EXPIRED", color: "text-text-muted" },
+  const stateLabels: Record<string, { prefix: string; label: string; color: string }> = {
+    created: { prefix: "[01]", label: "AWAITING ACCEPTANCE", color: "text-lime" },
+    accepted: { prefix: "[02]", label: "AWAITING FUNDING", color: "text-lime" },
+    funded: { prefix: "[03]", label: "IN PROGRESS", color: "text-lime" },
+    submitted: { prefix: "[04]", label: "AWAITING APPROVAL", color: "text-lime" },
+    completed: { prefix: "[✓]", label: "COMPLETED", color: "text-lime" },
+    refunded: { prefix: "[↩]", label: "REFUNDED", color: "text-text-muted" },
+    cancelled: { prefix: "[×]", label: "CANCELLED", color: "text-text-muted" },
+    disputed: { prefix: "[!]", label: "DISPUTED", color: "text-red-400" },
+    expired: { prefix: "[×]", label: "EXPIRED", color: "text-text-muted" },
   };
 
   const stateInfo = stateLabels[deal.state] || stateLabels.created;
@@ -429,12 +429,11 @@ export default function DealPage({
             DEAL #{id.slice(0, 8).toUpperCase()}
           </div>
           <div
-            className={`inline-flex items-center gap-1.5 border ${
-              deal.state === "disputed"
-                ? "border-red-500/30 bg-red-500/10"
-                : "border-lime/30 bg-lime/10"
-            } px-2.5 py-1 text-xs uppercase tracking-wider ${stateInfo.color}`}
+            className={`flex items-baseline gap-2 font-mono text-xs uppercase tracking-widest ${stateInfo.color}`}
           >
+            <span>{stateInfo.prefix}</span>
+            <span>{stateInfo.label}</span>
+          </div>
             <span
               className={`h-1 w-1 rounded-full ${
                 deal.state === "disputed" ? "bg-red-500" : "bg-lime"
@@ -533,11 +532,9 @@ export default function DealPage({
 
         {deal.state === "disputed" && (
           <div className="mb-6 border border-red-500/30 bg-red-500/5 p-6">
-            <div className="mb-4 flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-red-500" />
-              <div className="text-xs uppercase tracking-widest text-red-400">
-                DISPUTE ACTIVE
-              </div>
+            <div className="mb-4 flex items-baseline gap-2 font-mono text-xs uppercase tracking-widest text-red-400">
+              <span>[!]</span>
+              <span>DISPUTE ACTIVE</span>
             </div>
 
             {!hasProposal && (

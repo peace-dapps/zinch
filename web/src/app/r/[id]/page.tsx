@@ -110,18 +110,21 @@ export default function ReceiptPage({
     );
   }
 
-  const outcomeLabels: Record<string, { label: string; description: string; color: string }> = {
+  const outcomeLabels: Record<string, { prefix: string; label: string; description: string; color: string }> = {
     completed: {
+      prefix: "[✓]",
       label: "COMPLETED",
       description: "Funds released to worker",
       color: "text-lime",
     },
     refunded: {
+      prefix: "[↩]",
       label: "REFUNDED",
       description: "Funds returned to client",
       color: "text-text-muted",
     },
     cancelled: {
+      prefix: "[×]",
       label: "CANCELLED",
       description: "Deal cancelled before funding",
       color: "text-text-muted",
@@ -147,19 +150,9 @@ export default function ReceiptPage({
           <div className="mb-4 text-xs uppercase tracking-widest text-text-faded">
             // ZINCH RECEIPT
           </div>
-          <div
-            className={`mb-3 inline-flex items-center gap-2 border px-3 py-1.5 text-xs uppercase tracking-widest ${
-              deal.state === "completed"
-                ? "border-lime/30 bg-lime/10 text-lime"
-                : "border-border bg-surface text-text-muted"
-            }`}
-          >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                deal.state === "completed" ? "bg-lime" : "bg-text-faded"
-              }`}
-            />
-            {outcome.label}
+          <div className={`mb-3 flex items-baseline justify-center gap-2 font-mono text-xs uppercase tracking-widest ${outcome.color}`}>
+            <span>{outcome.prefix}</span>
+            <span>{outcome.label}</span>
           </div>
           <h1 className="mb-2 text-3xl font-bold tracking-tight md:text-4xl">
             {deal.title}

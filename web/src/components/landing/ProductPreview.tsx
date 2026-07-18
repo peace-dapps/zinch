@@ -25,9 +25,9 @@ export default function ProductPreview() {
               <div className="text-xs tracking-wider text-text-faded">
                 DEAL #A7K2X9
               </div>
-              <div className="inline-flex items-center gap-1.5 border border-lime/30 bg-lime/10 px-2.5 py-1 text-[10px] uppercase tracking-widest text-lime">
-                <span className="h-1 w-1 rounded-full bg-lime" />
-                AWAITING FUNDING
+              <div className="flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-widest text-lime">
+                <span>[02]</span>
+                <span>AWAITING FUNDING</span>
               </div>
             </div>
 
