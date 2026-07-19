@@ -1,12 +1,23 @@
 export default function Hero() {
   return (
     <section className="relative mx-auto flex min-h-screen max-w-7xl flex-col justify-center px-6 pb-16 pt-32 md:px-8 md:pt-40">
-      <div className="mb-8 flex w-fit items-baseline gap-3">
-        <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-lime">
-          [V1]
+      <div className="mb-8 flex w-fit flex-wrap items-baseline gap-x-3 gap-y-2">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-lime">
+            [V1]
+          </span>
+          <span className="text-xs uppercase tracking-widest text-text-muted">
+            Live on Solana devnet
+          </span>
         </div>
-        <div className="text-xs uppercase tracking-widest text-text-muted">
-          Live on Solana devnet
+        <span className="text-text-faded">·</span>
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] font-mono uppercase tracking-[0.2em] text-text-faded">
+            [V2]
+          </span>
+          <span className="text-xs uppercase tracking-widest text-text-muted">
+            USDC coming soon
+          </span>
         </div>
       </div>
 

@@ -1,8 +1,10 @@
 allowBuilds:
   '@reown/appkit': true
+  '@sentry/cli': false
   '@stellar/stellar-sdk': true
   blake-hash: true
   bufferutil: true
+  core-js: false
   keccak: true
   protobufjs: true
   sharp: true

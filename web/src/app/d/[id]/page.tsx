@@ -1007,7 +1007,6 @@ export default function DealPage({
         <div className="mt-8 text-center text-xs text-text-faded">
           POWERED BY ZINCH · ON SOLANA DEVNET
         </div>
-      </div>
     </main>
   );
 }
