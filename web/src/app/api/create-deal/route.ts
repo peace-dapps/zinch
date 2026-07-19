@@ -30,9 +30,17 @@ export async function POST(req: Request) {
     // Look up the creator user by wallet
     const { data: userData } = await supabaseAdmin
       .from("users")
-      .select("id")
+      .select("id, banned")
       .eq("wallet_address", creatorWallet)
-      .single();
+      .maybeSingle();
+
+    // Block banned users
+    if (userData?.banned) {
+      return NextResponse.json(
+        { error: "This wallet has been suspended from creating new deals." },
+        { status: 403 }
+      );
+    }
 
     const { data, error } = await supabaseAdmin
       .from("deals")
