@@ -102,6 +102,13 @@ export default function Nav() {
                   Docs
                 </Link>
                 
+                <Link
+                  href="/stats"
+                  className="px-4 py-2 text-sm font-medium text-text-muted transition-colors hover:text-text"
+                >
+                Stats
+                </Link>
+
                <a   href="#faq"
                   className="px-4 py-2 text-sm font-medium text-text-muted transition-colors hover:text-text"
                 >
@@ -232,6 +239,14 @@ export default function Nav() {
                     className="border border-border px-4 py-3 text-sm font-medium text-text hover:border-border-hover"
                   >
                     Docs
+                  </Link>
+
+                  <Link
+                    href="/stats"
+                    onClick={() => setMobileOpen(false)}
+                    className="border border-border px-4 py-3 text-sm font-medium text-text hover:border-border-hover"
+                  >
+                    Stats
                   </Link>
                   
                   <a  href="#faq"

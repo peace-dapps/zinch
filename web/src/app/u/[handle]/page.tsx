@@ -8,6 +8,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import Nav from "@/components/landing/Nav";
 import { PageLoader } from "@/components/ui/Spinner";
 import { useToast } from "@/components/ui/Toast";
+import { useWallet } from "@solana/wallet-adapter-react";
 
 type Profile = {
   user: {
@@ -45,6 +46,7 @@ export default function ProfilePage({
   const { handle } = use(params);
   const router = useRouter();
   const { authenticated, login } = usePrivy();
+  const { publicKey } = useWallet();
   const { showToast } = useToast();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -163,6 +165,13 @@ export default function ProfilePage({
             Start a deal with @{user.handle}
           </button>
         </div>
+
+{/* Report */}
+        <ReportButton
+          reporterWallet={publicKey?.toBase58() || null}
+          reportedWallet={user.wallet_address}
+          reportedHandle={user.handle}
+        />
 
         {/* Bio */}
         {user.bio && (
@@ -294,6 +303,107 @@ function StatCard({ label, value }: { label: string; value: string }) {
       </div>
       <div className="text-xl font-bold tracking-tight tabular-nums text-text">
         {value}
+      </div>
+    </div>
+  );
+}
+function ReportButton({
+  reporterWallet,
+  reportedWallet,
+  reportedHandle,
+}: {
+  reporterWallet: string | null;
+  reportedWallet: string;
+  reportedHandle: string;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const { showToast } = useToast();
+
+  if (!reporterWallet || reporterWallet === reportedWallet) return null;
+  if (submitted) {
+    return (
+      <div className="mb-10 text-center text-xs text-text-faded">
+        Report submitted. We&apos;ll review it.
+      </div>
+    );
+  }
+
+  if (!showForm) {
+    return (
+      <div className="mb-10 text-center">
+        <button
+          onClick={() => setShowForm(true)}
+          className="text-xs text-text-faded transition-colors hover:text-red-400"
+        >
+          Report this user
+        </button>
+      </div>
+    );
+  }
+
+  const submit = async () => {
+    if (!reason.trim()) {
+      showToast("Please describe the issue", "error");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/user/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reporterWallet,
+          reportedWallet,
+          reportedHandle,
+          reason: reason.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        showToast(data.error || "Failed to submit report", "error");
+      } else {
+        setSubmitted(true);
+        showToast("Report submitted", "success");
+      }
+    } catch {
+      showToast("Failed to submit report", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="mb-10 border border-red-500/20 bg-red-500/5 p-5">
+      <div className="mb-3 text-xs uppercase tracking-widest text-red-400">
+        Report @{reportedHandle}
+      </div>
+      <textarea
+        value={reason}
+        onChange={(e) => setReason(e.target.value.slice(0, 500))}
+        placeholder="Describe the issue (scam, harassment, fake profile, etc.)"
+        rows={3}
+        className="mb-3 w-full resize-none border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-text-faded focus:border-red-400 focus:outline-none"
+      />
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-text-faded">{reason.length}/500</div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowForm(false)}
+            className="border border-border px-3 py-1.5 text-xs text-text-muted transition-all hover:text-text"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={submitting || !reason.trim()}
+            className="border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 transition-all hover:bg-red-500/20 disabled:opacity-50"
+          >
+            {submitting ? "Submitting..." : "Submit report"}
+          </button>
+        </div>
       </div>
     </div>
   );

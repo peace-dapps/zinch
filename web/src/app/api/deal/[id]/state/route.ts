@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
 import { sendStateChangeEmail } from "@/lib/email";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
 
 const VALID_STATES = [
   "created",
@@ -27,6 +28,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const ip = getClientIp(req);
+    const rl = rateLimit({
+      key: `deal-state:${ip}`,
+      limit: 100,
+      windowMs: 60 * 1000, // 100 per minute per IP
+    });
+    if (!rl.allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
     const { id } = await params;
     const body = await req.json();
     const { newState, txSignature } = body;

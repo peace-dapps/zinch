@@ -400,3 +400,24 @@ export async function buildAcceptResolutionInstruction(params: {
 export function getDealPDAFromHex(dealIdHex: string): [PublicKey, number] {
   return getDealPDA(hexToDealId(dealIdHex));
 }
+
+/**
+ * Build cancel_deal instruction
+ * Either party (worker or client) can cancel before funding
+ */
+export async function buildCancelDealInstruction(params: {
+  signerPubkey: PublicKey;
+  dealPDA: PublicKey;
+}): Promise<TransactionInstruction> {
+  const { signerPubkey, dealPDA } = params;
+  const discriminator = await computeDiscriminator("cancel_deal");
+
+  return new TransactionInstruction({
+    keys: [
+      { pubkey: signerPubkey, isSigner: true, isWritable: true },
+      { pubkey: dealPDA, isSigner: false, isWritable: true },
+    ],
+    programId: PROGRAM_ID,
+    data: Buffer.from(discriminator),
+  });
+}

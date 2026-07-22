@@ -8,7 +8,7 @@ export default function FAQ() {
   const faqs = [
     {
       q: "How does Zinch make money?",
-      a: "We charge a flat 1.5% fee per completed deal, paid by the client on top of the deal amount. Workers receive the full agreed price. 20% of every fee funds a public insurance pool. No other revenue streams, ever.",
+      a: "We charge a flat 1.5% fee per completed deal, paid by the client on top of the deal amount. Workers receive the full agreed price. No hidden fees, no subscriptions, no token.",
     },
     {
       q: "Is there a $ZINCH token?",
@@ -16,11 +16,11 @@ export default function FAQ() {
     },
     {
       q: "What happens if there's a dispute?",
-      a: "Either party can open a dispute, which freezes the escrow. Both parties then propose a resolution (release, refund, or split). When both agree, the protocol executes. There are no central arbitrators.",
+      a: "Either party can open a dispute, which freezes the escrow. Both parties then propose a resolution — full release, full refund, or a custom split. When both agree, the protocol executes on-chain. There are no central arbitrators.",
     },
     {
       q: "What if the client disappears after I deliver?",
-      a: "Every deal has an auto-release timer (default 72 hours). If the client doesn't approve, request revision, or open a dispute within that window, anyone can trigger automatic release of funds to the worker — including the worker themselves.",
+      a: "Every deal has an auto-release timer set at creation (minimum 30 minutes, up to 30 days). If the client doesn't approve, request revision, or open a dispute within that window, anyone can trigger automatic release of funds to the worker — including the worker themselves.",
     },
     {
       q: "Do I need a crypto wallet to use Zinch?",
@@ -28,11 +28,11 @@ export default function FAQ() {
     },
     {
       q: "Which tokens are supported?",
-      a: "V1 supports USDC and SOL. V1.5 will add support for any SPL token on Solana — BONK, JUP, PYTH, and project-specific tokens.",
+      a: "V1 supports SOL. USDC support is coming in V2, along with additional SPL tokens on Solana.",
     },
     {
       q: "Is the smart contract audited?",
-      a: "Pre-launch, the contract goes through informal community audit via Superteam. A formal third-party audit is planned for V2. Until then, deal amounts are capped at $500 during the soft launch period.",
+      a: "The contract source is publicly available on GitHub for community review. A formal third-party audit is planned before mainnet launch. During the devnet phase, no real funds are at risk.",
     },
     {
       q: "How fast does Zinch settle?",
@@ -40,11 +40,23 @@ export default function FAQ() {
     },
     {
       q: "Can I cancel a deal?",
-      a: "Yes — before funding, either party can cancel freely. After funding but before submission, the worker can request a refund. After submission, cancellation requires mutual agreement via the dispute flow.",
+      a: "Yes — before funding, either party can cancel on-chain. After funding but before submission, the worker can refund the client. After submission, resolution requires mutual agreement via the dispute flow.",
     },
     {
       q: "Is Zinch open source?",
-      a: "The Anchor smart contract will be open source from V1. The web app source will be open-sourced gradually as the product matures. Transparency is core to a trust product.",
+      a: "The Anchor smart contract is open source on GitHub. The web app source will be open-sourced gradually as the product matures. Transparency is core to a trust product.",
+    },
+    {
+      q: "What happens to the platform fee during a dispute?",
+      a: "The 1.5% fee is always collected regardless of outcome — whether funds are released to the worker, refunded to the client, or split between both. The fee was locked at funding time and goes to the platform when the deal resolves.",
+    },
+    {
+      q: "Can I use Zinch for non-work escrow?",
+      a: "Zinch is designed for work agreements — one party delivers, the other pays. You could technically use it for any two-party transaction where one side needs to trust the other, but the UX is optimized for freelance and contract work.",
+    },
+    {
+      q: "What if I lose access to my wallet?",
+      a: "If you signed in with Google, email, or Telegram, Privy manages your wallet recovery. If you connected an external wallet like Phantom, recovery depends on whether you backed up your seed phrase. Zinch cannot recover lost external wallets — funds in active deals would remain locked until the auto-release timer fires or a dispute resolves.",
     },
   ];
 

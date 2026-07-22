@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
 
 // Generate a handle from email/name
 function generateHandleBase(input: string): string {
@@ -32,6 +33,15 @@ async function findAvailableHandle(base: string): Promise<string> {
 
 export async function POST(req: Request) {
   try {
+    const ip = getClientIp(req);
+    const rl = rateLimit({
+      key: `sync-user:${ip}`,
+      limit: 60,
+      windowMs: 60 * 1000, // 60 per minute per IP
+    });
+    if (!rl.allowed) {
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
     const body = await req.json();
     const { privyId, email, googleEmail, telegramUsername, walletAddress } =
       body;

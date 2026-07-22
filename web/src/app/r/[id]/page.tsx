@@ -251,6 +251,24 @@ export default function ReceiptPage({
           )}
         </div>
 
+        {/* Share */}
+        {deal.state === "completed" && (
+          <div className="mb-10 border border-border bg-surface p-6 md:p-8">
+            <div className="mb-4 text-xs uppercase tracking-widest text-text-faded">
+              // SHARE THIS RECEIPT
+            </div>
+            <p className="mb-5 text-sm text-text-muted">
+              Show the world you closed a real deal on-chain. One click.
+            </p>
+            <ShareButtons
+              amount={(deal.amount_lamports / 1e9).toFixed(4)}
+              currency={deal.currency}
+              title={deal.title}
+              dealId={deal.deal_id}
+            />
+          </div>
+        )}
+
         {/* Meta */}
         <div className="border-t border-border pt-6 text-center">
           <div className="mb-2 text-xs text-text-faded">
@@ -297,20 +315,86 @@ function TimelineItem({
             </span>
           )}
           {tx && (
-            <>
-              {date && <span>·</span>}
-              
-              <a  href={`https://explorer.solana.com/tx/${tx}?cluster=devnet`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-lime hover:underline"
-              >
-                {tx.slice(0, 8)}...{tx.slice(-6)} ↗
-              </a>
-            </>
-          )}
+          <>
+            {date && <span>·</span>}
+            
+            <a  href={`https://explorer.solana.com/tx/${tx}?cluster=devnet`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-lime hover:underline"
+            >
+              {tx.slice(0, 8)}...{tx.slice(-6)} ↗
+            </a>
+          </>
+        )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ShareButtons({
+  amount,
+  currency,
+  title,
+  dealId,
+}: {
+  amount: string;
+  currency: string;
+  title: string;
+  dealId: string;
+}) {
+  const receiptUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/r/${dealId}`
+      : `https://zinch.app/r/${dealId}`;
+
+  const tweetText = `Just closed a deal on @zinch_app — ${amount} ${currency} released through on-chain escrow on Solana.
+
+Zero platform disputes. Zero risk.
+
+Receipt:`;
+
+  const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(
+    tweetText
+  )}&url=${encodeURIComponent(receiptUrl)}`;
+
+  const telegramUrl = `https://t.me/share/url?url=${encodeURIComponent(
+    receiptUrl
+  )}&text=${encodeURIComponent(
+    `Closed a ${amount} ${currency} deal on Zinch — on-chain proof:`
+  )}`;
+
+  const copyLink = () => {
+    if (typeof navigator === "undefined") return;
+    navigator.clipboard.writeText(receiptUrl);
+  };
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      
+      <a
+        href={twitterUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 border border-lime bg-lime/10 px-5 py-3 text-sm font-medium text-lime transition-all hover:bg-lime/20"
+      >
+        Share on X ↗
+      </a>
+      
+      <a  href={telegramUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-2 border border-border px-5 py-3 text-sm font-medium text-text transition-all hover:border-border-hover"
+      >
+        Share on Telegram ↗
+      </a>
+      <button
+        onClick={copyLink}
+        className="inline-flex items-center gap-2 border border-border px-5 py-3 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text"
+      >
+        Copy link
+      </button>
     </div>
   );
 }

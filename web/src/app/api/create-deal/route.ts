@@ -1,8 +1,21 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: Request) {
   try {
+    const ip = getClientIp(req);
+    const rl = rateLimit({
+      key: `create-deal:${ip}`,
+      limit: 20,
+      windowMs: 60 * 60 * 1000, // 20 deals per hour per IP
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Rate limit reached. Please slow down." },
+        { status: 429 }
+      );
+    }
     const body = await req.json();
     const {
       dealId,

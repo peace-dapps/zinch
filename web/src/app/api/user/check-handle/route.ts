@@ -1,8 +1,21 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase";
+import { rateLimit, getClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: Request) {
   try {
+    const ip = getClientIp(req);
+    const rl = rateLimit({
+      key: `check-handle:${ip}`,
+      limit: 30,
+      windowMs: 60 * 1000, // 30 per minute per IP
+    });
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Try again shortly." },
+        { status: 429 }
+      );
+    }
     const { handle, excludePrivyId } = await req.json();
 
     if (!handle) {

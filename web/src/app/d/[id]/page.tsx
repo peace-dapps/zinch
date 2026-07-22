@@ -19,6 +19,7 @@ import {
   buildOpenDisputeInstruction,
   buildProposeResolutionInstruction,
   buildAcceptResolutionInstruction,
+  buildCancelDealInstruction,
   getConnection,
   getDealPDAFromHex,
   FEE_RECIPIENT,
@@ -195,6 +196,12 @@ export default function DealPage({
         );
         newState = "refunded";
       } else if (action === "cancel") {
+        transaction.add(
+          await buildCancelDealInstruction({
+            signerPubkey: publicKey,
+            dealPDA,
+          })
+        );
         newState = "cancelled";
       } else if (action === "dispute") {
         transaction.add(
@@ -217,7 +224,7 @@ export default function DealPage({
         newState = "completed";
       }
 
-      if (action !== "cancel") {
+      {
         const simResult = await connection.simulateTransaction(transaction);
         if (simResult.value.err) {
           console.error("Simulation failed:", simResult.value.err);
@@ -433,13 +440,6 @@ export default function DealPage({
           >
             <span>{stateInfo.prefix}</span>
             <span>{stateInfo.label}</span>
-          </div>
-            <span
-              className={`h-1 w-1 rounded-full ${
-                deal.state === "disputed" ? "bg-red-500" : "bg-lime"
-              }`}
-            />
-            {stateInfo.label}
           </div>
         </div>
 
@@ -841,20 +841,42 @@ export default function DealPage({
 
         {authenticated && connected && isParty && deal.state === "created" && (
           <div className="mb-6">
-            <button
-              onClick={() => executeAction("accept")}
-              disabled={actionLoading}
-              className="mb-2 w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
-            >
-              {actionLoading ? <ButtonSpinner label="Signing" /> : "Accept this deal"}
-            </button>
-            <button
-              onClick={() => executeAction("cancel")}
-              disabled={actionLoading}
-              className="w-full border border-border py-3.5 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
-            >
-              Reject
-            </button>
+            {currentUserWallet !== deal.creator_wallet ? (
+              <>
+                <button
+                  onClick={() => executeAction("accept")}
+                  disabled={actionLoading}
+                  className="mb-2 w-full bg-lime py-4 text-sm font-medium text-bg transition-all hover:opacity-90 disabled:opacity-50"
+                >
+                  {actionLoading ? <ButtonSpinner label="Signing" /> : "Accept this deal"}
+                </button>
+                <button
+                  onClick={() => executeAction("cancel")}
+                  disabled={actionLoading}
+                  className="w-full border border-border py-3.5 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
+                >
+                  Reject
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="mb-3 text-center text-sm text-text-muted">
+                  Waiting for{" "}
+                  <span className="font-mono text-text">
+                    {deal.counterparty_wallet.slice(0, 4)}...
+                    {deal.counterparty_wallet.slice(-4)}
+                  </span>{" "}
+                  to accept this deal.
+                </div>
+                <button
+                  onClick={() => executeAction("cancel")}
+                  disabled={actionLoading}
+                  className="w-full border border-border py-3.5 text-sm font-medium text-text-muted transition-all hover:border-border-hover hover:text-text disabled:opacity-50"
+                >
+                  {actionLoading ? <ButtonSpinner label="Cancelling" /> : "Cancel this deal"}
+                </button>
+              </>
+            )}
           </div>
         )}
 
@@ -1007,6 +1029,7 @@ export default function DealPage({
         <div className="mt-8 text-center text-xs text-text-faded">
           POWERED BY ZINCH · ON SOLANA DEVNET
         </div>
+      </div>
     </main>
   );
 }
