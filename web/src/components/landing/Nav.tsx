@@ -63,15 +63,16 @@ export default function Nav() {
                 <div className="hidden lg:block">
                   <WalletMultiButton
                     style={{
-                      backgroundColor: connected ? "#1a1a1a" : "transparent",
-                      border: "1px solid #2a2a2a",
-                      borderRadius: 0,
-                      padding: "0.5rem 1rem",
-                      fontSize: "0.8125rem",
-                      height: "auto",
-                      fontFamily: "inherit",
-                      color: connected ? "#C4FF3E" : "#a0a0a0",
-                    }}
+                    backgroundColor: connected ? "#1a1a1a" : "transparent",
+                    border: "1px solid #2a2a2a",
+                    borderRadius: 0,
+                    padding: "0.5rem 1rem",
+                    fontSize: "0.875rem",
+                    height: "38px",
+                    fontFamily: "inherit",
+                    color: connected ? "#C4FF3E" : "#a0a0a0",
+                    lineHeight: "1",
+                  }}
                   />
                 </div>
                 <button
