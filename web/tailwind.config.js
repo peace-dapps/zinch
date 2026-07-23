@@ -28,10 +28,10 @@ module.exports = {
         },
       },
       fontFamily: {
-        display: ["var(--font-display)", "system-ui", "sans-serif"],
-        body: ["var(--font-body)", "system-ui", "sans-serif"],
-        mono: ["var(--font-mono)", "monospace"],
-      },
+  body: ["var(--font-geist-sans)", "sans-serif"],
+  display: ["var(--font-display)", "sans-serif"],
+  mono: ["var(--font-mono)", "monospace"],
+},
       animation: {
         pulse: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
       },
