@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useWallet } from "@solana/wallet-adapter-react";
@@ -19,7 +19,7 @@ import {
 
 type DealKind = "workerInitiated" | "clientInitiated";
 
-export default function NewDeal() {
+function NewDealInner() {
   const { authenticated, ready, login } = usePrivy();
   const { publicKey, sendTransaction, connected } = useWallet();
   const router = useRouter();
@@ -37,7 +37,7 @@ export default function NewDeal() {
   const [error, setError] = useState<string | null>(null);
   // Prefill counterparty from URL (e.g. from "Start a deal with @user")
   useEffect(() => {
-    const cp = searchParams.get("counterparty");
+    const cp = searchParams?.get("counterparty");
     if (cp) setCounterparty(cp);
   }, [searchParams]);
 
@@ -428,5 +428,13 @@ export default function NewDeal() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function NewDeal() {
+  return (
+    <Suspense fallback={null}>
+      <NewDealInner />
+    </Suspense>
   );
 }
