@@ -60,7 +60,7 @@ cp .env.example .env.local   # fill in values below
 pnpm dev                     # http://localhost:3000
 ```
 
-Required env vars: `NEXT_PUBLIC_PRIVY_APP_ID`, `NEXT_PUBLIC_SOLANA_RPC` (devnet), `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SUPABASE_URL`, Supabase anon + service keys, `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `ADMIN_WALLETS`, and optionally the PostHog key/host.
+See [`web/.env.example`](./web/.env.example) for all required variables (Privy, Supabase, Resend, PostHog, RPC, program ID, admin wallets, and the auto-release keypair).
 
 ## Roadmap
 

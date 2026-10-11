@@ -45,3 +45,4 @@ next-env.d.ts
 
 node_modules_old
 _delete_me
+!.env.example
