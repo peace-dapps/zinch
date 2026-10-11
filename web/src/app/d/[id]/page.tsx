@@ -50,6 +50,8 @@ type Deal = {
 
 function humanizeError(raw: string, fallback: string): string {
   if (!raw) return fallback;
+  if (raw.includes("AccountNotFound"))
+    return "This deal or wallet isn't on-chain yet. Make sure the wallet has devnet SOL and the deal was created successfully.";
   if (raw.includes("AccountDidNotDeserialize"))
     return "This deal was created before a smart contract upgrade and can no longer be used. Please create a new deal.";
   if (raw.includes("InvalidState"))
@@ -151,6 +153,17 @@ export default function DealPage({
     try {
       const connection = getConnection();
       const [dealPDA] = getDealPDAFromHex(deal.deal_id);
+      if (action === "accept" || action === "fund") {
+        const info = await connection.getAccountInfo(dealPDA);
+        if (!info) {
+          showToast(
+            "This deal wasn't fully created on-chain. Ask the worker to create a new one.",
+            "error"
+          );
+          setActionLoading(false);
+          return;
+        }
+      }
       const { blockhash } = await connection.getLatestBlockhash();
 
       const transaction = new Transaction({
