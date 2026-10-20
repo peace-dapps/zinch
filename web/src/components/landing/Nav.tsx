@@ -85,13 +85,13 @@ export default function Nav() {
             ) : (
               <>
                 
-               <a   href="#how"
+               <a   href="/#how"
                   className="px-4 py-2 text-sm font-medium text-text-muted transition-colors hover:text-text"
                 >
                   How it works
                 </a>
                 
-                <a  href="#pricing"
+                <a  href="/#pricing"
                   className="px-4 py-2 text-sm font-medium text-text-muted transition-colors hover:text-text"
                 >
                   Pricing
@@ -110,7 +110,7 @@ export default function Nav() {
                 Stats
                 </Link>
 
-               <a   href="#faq"
+               <a   href="/#faq"
                   className="px-4 py-2 text-sm font-medium text-text-muted transition-colors hover:text-text"
                 >
                   FAQ
@@ -221,14 +221,14 @@ export default function Nav() {
               ) : (
                 <div className="flex flex-col gap-1">
                   
-                 <a   href="#how"
+                 <a   href="/#how"
                     onClick={() => setMobileOpen(false)}
                     className="border border-border px-4 py-3 text-sm font-medium text-text hover:border-border-hover"
                   >
                     How it works
                   </a>
                   
-                 <a   href="#pricing"
+                 <a   href="/#pricing"
                     onClick={() => setMobileOpen(false)}
                     className="border border-border px-4 py-3 text-sm font-medium text-text hover:border-border-hover"
                   >
@@ -250,7 +250,7 @@ export default function Nav() {
                     Stats
                   </Link>
                   
-                  <a  href="#faq"
+                  <a  href="/#faq"
                     onClick={() => setMobileOpen(false)}
                     className="border border-border px-4 py-3 text-sm font-medium text-text hover:border-border-hover"
                   >
