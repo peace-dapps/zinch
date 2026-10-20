@@ -1,6 +1,7 @@
 "use client";
 
 import { PrivyProvider } from "@privy-io/react-auth";
+import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import { useUserSync } from "@/hooks/useUserSync";
 import { useMemo } from "react";
 import { ToastProvider } from "@/components/ui/Toast";
@@ -39,6 +40,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
                 walletChainType: "solana-only",
               },
               loginMethods: ["wallet", "email", "google", "telegram"],
+              externalWallets: {
+                solana: { connectors: toSolanaWalletConnectors() },
+              },
               embeddedWallets: {
                 solana: {
                   createOnLogin: "users-without-wallets",
