@@ -4,7 +4,7 @@ export default function HowItWorks() {
       num: "01",
       title: "Create the deal",
       desc: "Job title, amount, terms, deadline. Takes 60 seconds. Generates a unique shareable link.",
-      bullets: ["Any SPL token", "Custom terms", "Single or split payment"],
+      bullets: ["Paid in SOL", "Custom terms", "Single or split payment"],
     },
     {
       num: "02",
@@ -16,7 +16,7 @@ export default function HowItWorks() {
       num: "03",
       title: "Fund the escrow",
       desc: "Client locks payment in a Solana smart contract. Funds are visible on-chain at all times.",
-      bullets: ["Wallet or card", "USDC or SOL", "Verifiable on Solscan"],
+      bullets: ["Paid from your wallet", "Held in escrow", "Verifiable on Solscan"],
     },
     {
       num: "04",

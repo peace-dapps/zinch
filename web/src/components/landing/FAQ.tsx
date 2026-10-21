@@ -24,7 +24,7 @@ export default function FAQ() {
     },
     {
       q: "Do I need a crypto wallet to use Zinch?",
-      a: "No. You can sign in with Google, email, or Telegram. Zinch automatically creates a Solana wallet for you in the background (powered by Privy). Crypto-natives can connect Phantom, Solflare, or Backpack instead.",
+      a: "No. You can sign in with Google or email. Zinch automatically creates a Solana wallet for you in the background (powered by Privy). Crypto-natives can connect Phantom instead.",
     },
     {
       q: "Which tokens are supported?",
@@ -56,7 +56,7 @@ export default function FAQ() {
     },
     {
       q: "What if I lose access to my wallet?",
-      a: "If you signed in with Google, email, or Telegram, Privy manages your wallet recovery. If you connected an external wallet like Phantom, recovery depends on whether you backed up your seed phrase. Zinch cannot recover lost external wallets — funds in active deals would remain locked until the auto-release timer fires or a dispute resolves.",
+      a: "If you signed in with Google or email, Privy manages your wallet recovery. If you connected an external wallet like Phantom, recovery depends on whether you backed up your seed phrase. Zinch cannot recover lost external wallets — funds in active deals would remain locked until the auto-release timer fires or a dispute resolves.",
     },
   ];
 

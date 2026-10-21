@@ -12,8 +12,8 @@ export default function Security() {
     },
     {
       num: "03",
-      title: "Public insurance fund",
-      desc: "20% of every fee funds a public insurance pool. If a contract bug ever loses funds, we make affected users whole.",
+      title: "Open on-chain record",
+      desc: "Every deal is a Solana transaction. Anyone can check the program and each deal on the explorer.",
     },
     {
       num: "04",

@@ -17,13 +17,13 @@ export default function Features() {
     },
     {
       icon: "M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7M3 7l9-5 9 5M3 7l9 5 9-5",
-      title: "Any SPL token",
-      desc: "USDC, SOL, BONK, JUP, your project's token — all supported.",
+      title: "Paid in SOL",
+      desc: "Deals are paid in SOL today. USDC and more tokens are planned.",
     },
     {
       icon: "M16 11V7a4 4 0 1 0-8 0v4M5 11h14l1 10H4l1-10z",
-      title: "Insurance fund",
-      desc: "20% of every fee goes into a public insurance fund. Verifiable on-chain.",
+      title: "Verifiable on-chain",
+      desc: "Every deal is a Solana transaction. Check the program and each deal on the explorer.",
     },
     {
       icon: "M12 2v20M5 12h14M7 7l10 10M17 7L7 17",

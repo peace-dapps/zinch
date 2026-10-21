@@ -18,7 +18,7 @@ export default function WhySolana() {
     {
       stat: "24/7",
       label: "Mobile-ready",
-      desc: "Phantom, Solflare, and Backpack work on every phone. Solana Pay deep links open wallets natively.",
+      desc: "Wallets like Phantom work on every phone. Solana Pay deep links open wallets natively.",
     },
   ];
 
