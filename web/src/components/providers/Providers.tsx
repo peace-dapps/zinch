@@ -39,7 +39,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
                 showWalletLoginFirst: false,
                 walletChainType: "solana-only",
               },
-              loginMethods: ["wallet", "email", "google", "telegram"],
+              loginMethods: ["wallet", "email", "google"],
               externalWallets: {
                 solana: { connectors: toSolanaWalletConnectors() },
               },

@@ -21,7 +21,7 @@ export default function PrivacyPage() {
 
         <p className="font-medium text-text mt-4">Account data (via Privy):</p>
         <ul className="mt-2 list-disc space-y-1 pl-6">
-          <li>Email address (from Google, email login, or Telegram)</li>
+          <li>Email address (from Google or email login)</li>
           <li>Wallet address (embedded or external)</li>
           <li>Telegram username, if you use Telegram login</li>
           <li>An anonymous Privy user ID</li>
