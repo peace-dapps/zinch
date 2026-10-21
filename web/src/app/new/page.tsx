@@ -71,6 +71,10 @@ function NewDealInner() {
           >
             Sign in
           </button>
+          <p className="mx-auto mt-6 max-w-sm text-xs text-text-muted">
+            On a phone? Sign in with Google or email, or open Zinch inside
+            the Phantom app&apos;s browser.
+          </p>
         </div>
       </main>
     );
@@ -124,6 +128,15 @@ function NewDealInner() {
       });
 
       const connection = getConnection();
+
+      // Make sure the wallet can pay the network fee and account rent
+      const balance = await connection.getBalance(publicKey);
+      if (balance < 10_000_000) {
+        throw new Error(
+          "Your wallet needs at least 0.01 SOL on devnet to create a deal. Get free devnet SOL at faucet.solana.com and try again."
+        );
+      }
+
       const { blockhash } = await connection.getLatestBlockhash();
 
       const transaction = new Transaction({
@@ -152,7 +165,23 @@ function NewDealInner() {
 
       console.log("Transaction sent:", signature);
       // Wait for confirmation
-      await connection.confirmTransaction(signature, "confirmed");
+      const confirmation = await connection.confirmTransaction(
+        signature,
+        "confirmed"
+      );
+      if (confirmation.value.err) {
+        throw new Error(
+          "The transaction failed on-chain, so no deal was created. Nothing was saved. Please try again."
+        );
+      }
+
+      // Double check the deal account really exists before saving anything
+      const created = await connection.getAccountInfo(dealPDA, "confirmed");
+      if (!created) {
+        throw new Error(
+          "The deal wasn't found on-chain after sending. Nothing was saved. Please try again."
+        );
+      }
 
       console.log("Transaction confirmed:", signature);
 
@@ -161,10 +190,7 @@ function NewDealInner() {
       const clientWallet =
         kind === "clientInitiated" ? creatorAddress : counterparty.trim();
 
-      const res = await fetch("/api/create-deal", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const dealPayload = JSON.stringify({
           dealId: dealIdHex,
           creatorWallet: creatorAddress,
           counterpartyWallet: counterparty.trim(),
@@ -179,11 +205,34 @@ function NewDealInner() {
           autoReleaseSeconds,
           acceptanceDeadline: new Date(acceptanceDeadline * 1000).toISOString(),
           createTxSignature: signature,
-        }),
-      });
+        });
 
-      if (!res.ok) {
-        console.error("Failed to save deal to DB:", await res.text());
+      let saved = false;
+      let lastError = "";
+      for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+        try {
+          const res = await fetch("/api/create-deal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: dealPayload,
+          });
+          if (res.ok) {
+            saved = true;
+          } else {
+            lastError = await res.text();
+          }
+        } catch (e: any) {
+          lastError = e?.message || "network error";
+        }
+        if (!saved) await new Promise((r) => setTimeout(r, 1000));
+      }
+
+      if (!saved) {
+        console.error("Failed to save deal to DB:", lastError);
+        throw new Error(
+          "Your deal was created on-chain but we couldn't save it. Please contact support and share this ID: " +
+            dealIdHex
+        );
       }
 
       router.push(`/d/${dealIdHex}`);
