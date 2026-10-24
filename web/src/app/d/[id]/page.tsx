@@ -131,6 +131,41 @@ export default function DealPage({
     return () => clearInterval(t);
   }, []);
 
+  // Keep the deal fresh: poll every 5s while the tab is visible, and refresh
+  // when the user comes back to the tab. Stops once the deal is finished.
+  const isFinished =
+    deal?.state === "completed" ||
+    deal?.state === "refunded" ||
+    deal?.state === "cancelled";
+
+  useEffect(() => {
+    if (!deal || isFinished || actionLoading) return;
+
+    const refresh = async () => {
+      if (document.visibilityState !== "visible") return;
+      try {
+        const res = await fetch(`/api/deal/${id}`, { cache: "no-store" });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.deal) return;
+        setDeal((prev) =>
+          prev && JSON.stringify(prev) === JSON.stringify(data.deal)
+            ? prev
+            : data.deal
+        );
+      } catch {
+        // ignore network blips, try again next tick
+      }
+    };
+
+    const timer = setInterval(refresh, 5000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [id, deal?.state, isFinished, actionLoading]);
+
   const executeAction = async (
     action:
       | "accept"
